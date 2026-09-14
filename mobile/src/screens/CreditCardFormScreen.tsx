@@ -1,0 +1,127 @@
+import { useState } from 'react';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { Button, HelperText, Text, TextInput, useTheme } from 'react-native-paper';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
+import { useAuth } from '../auth/AuthContext';
+import { createCreditCard, updateCreditCard } from '../api/creditCards';
+import { ApiError } from '../api/client';
+import type { CreditCardsStackParamList } from '../navigation/CreditCardsNavigator';
+
+type Props = NativeStackScreenProps<CreditCardsStackParamList, 'CreditCardForm'>;
+
+export default function CreditCardFormScreen({ route, navigation }: Props) {
+  const { token } = useAuth();
+  const theme = useTheme();
+  const existing = route.params?.card;
+  const isEditing = !!existing;
+
+  const [name, setName] = useState(existing?.name ?? '');
+  const [bank, setBank] = useState(existing?.bank ?? '');
+  const [dueDate, setDueDate] = useState(existing ? String(existing.due_date) : '');
+  const [errors, setErrors] = useState<string[]>([]);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  function validate(): string[] {
+    const problems: string[] = [];
+    if (!name.trim()) problems.push('Name is required');
+    if (!bank.trim()) problems.push('Bank is required');
+    const dueDateValue = Number(dueDate);
+    if (!dueDate) {
+      problems.push('Due date is required');
+    } else if (!Number.isInteger(dueDateValue) || dueDateValue < 1 || dueDateValue > 31) {
+      problems.push('Due date must be a day of month between 1 and 31');
+    }
+    return problems;
+  }
+
+  async function handleSave() {
+    if (!token) return;
+
+    const problems = validate();
+    setErrors(problems);
+    setApiError(null);
+    if (problems.length > 0) return;
+
+    setIsSubmitting(true);
+    const input = { name: name.trim(), bank: bank.trim(), dueDate: Number(dueDate) };
+
+    try {
+      if (isEditing && existing) {
+        await updateCreditCard(token, existing.id, input);
+      } else {
+        await createCreditCard(token, input);
+      }
+      navigation.goBack();
+    } catch (err) {
+      setApiError(err instanceof ApiError ? err.message : 'Unable to save credit card. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <TextInput label="Card Name" value={name} onChangeText={setName} placeholder="BDO Visa" style={styles.field} />
+        <TextInput label="Bank" value={bank} onChangeText={setBank} placeholder="BDO" style={styles.field} />
+
+        <TextInput
+          label="Due Date (day of month)"
+          value={dueDate}
+          onChangeText={(text) => setDueDate(text.replace(/[^0-9]/g, ''))}
+          keyboardType="number-pad"
+          placeholder="25"
+          maxLength={2}
+          style={styles.field}
+        />
+        <HelperText type="info" visible style={styles.helper}>
+          Day of the month your statement is due, e.g. 25
+        </HelperText>
+
+        {errors.length > 0 && (
+          <View style={styles.field}>
+            {errors.map((e) => (
+              <Text key={e} style={[styles.error, { color: theme.colors.error }]} variant="bodySmall">
+                {e}
+              </Text>
+            ))}
+          </View>
+        )}
+
+        {apiError && (
+          <Text style={[styles.error, { color: theme.colors.error }]} variant="bodySmall">
+            {apiError}
+          </Text>
+        )}
+
+        <Button mode="contained" onPress={handleSave} loading={isSubmitting} disabled={isSubmitting} style={styles.saveButton}>
+          Save
+        </Button>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+const styles = StyleSheet.create({
+  flex: {
+    flex: 1,
+  },
+  content: {
+    padding: 16,
+  },
+  field: {
+    marginBottom: 4,
+  },
+  helper: {
+    marginBottom: 12,
+  },
+  error: {
+    marginBottom: 4,
+  },
+  saveButton: {
+    marginTop: 8,
+    marginBottom: 32,
+  },
+});

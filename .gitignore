@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+
+# Editors
+.vscode/
+.idea/
+
+# Environment files (secrets) — safety net in addition to server/.gitignore
+.env
+.env.local
+.env.*.local
+
+# Node (safety net in addition to server/.gitignore and mobile/.gitignore)
+node_modules/
