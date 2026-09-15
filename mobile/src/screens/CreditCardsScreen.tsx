@@ -4,9 +4,8 @@ import { ActivityIndicator, Button, Card, FAB, Text, useTheme } from 'react-nati
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import { useAuth } from '../auth/AuthContext';
-import { listCreditCards, type CreditCard } from '../api/creditCards';
-import { ApiError } from '../api/client';
+import { creditCardService, type CreditCard } from '../services/creditCardService';
+import { ServiceError } from '../services/errors';
 import { STATUS_COLORS, STATUS_LABELS } from '../constants/cardStatus';
 import { formatCurrency, formatShortDate } from '../utils/format';
 import type { CreditCardsStackParamList } from '../navigation/CreditCardsNavigator';
@@ -14,24 +13,22 @@ import type { CreditCardsStackParamList } from '../navigation/CreditCardsNavigat
 type Props = NativeStackScreenProps<CreditCardsStackParamList, 'CreditCardList'>;
 
 export default function CreditCardsScreen({ navigation }: Props) {
-  const { token } = useAuth();
   const theme = useTheme();
   const [cards, setCards] = useState<CreditCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const loadCards = useCallback(async () => {
-    if (!token) return;
     setError(null);
     try {
-      const data = await listCreditCards(token);
+      const data = await creditCardService.listCards();
       setCards(data);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Unable to load credit cards.');
+      setError(err instanceof ServiceError ? err.message : 'Unable to load credit cards.');
     } finally {
       setIsLoading(false);
     }
-  }, [token]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {

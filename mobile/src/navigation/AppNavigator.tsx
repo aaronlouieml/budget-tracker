@@ -1,14 +1,13 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { View } from 'react-native';
 import { IconButton, useTheme } from 'react-native-paper';
 
 import HomeScreen from '../screens/HomeScreen';
 import ExpensesNavigator from './ExpensesNavigator';
 import CreditCardsNavigator from './CreditCardsNavigator';
 import BankAccountsNavigator from './BankAccountsNavigator';
+import PeopleNavigator from './PeopleNavigator';
 import ReportsScreen from '../screens/ReportsScreen';
-import { useAuth } from '../auth/AuthContext';
 import { useAppTheme } from '../theme/ThemeContext';
 
 export type RootTabParamList = {
@@ -16,6 +15,7 @@ export type RootTabParamList = {
   Expenses: undefined;
   'Credit Cards': undefined;
   Accounts: undefined;
+  'Money Owed': undefined;
   Reports: undefined;
 };
 
@@ -26,12 +26,12 @@ const ICONS: Record<keyof RootTabParamList, keyof typeof MaterialCommunityIcons.
   Expenses: 'cash-minus',
   'Credit Cards': 'credit-card-outline',
   Accounts: 'bank',
+  'Money Owed': 'hand-coin-outline',
   Reports: 'chart-bar',
 };
 
 export default function AppNavigator() {
   const theme = useTheme();
-  const { logout } = useAuth();
   const { isDark, toggleTheme } = useAppTheme();
 
   return (
@@ -42,14 +42,11 @@ export default function AppNavigator() {
         ),
         tabBarActiveTintColor: theme.colors.primary,
         headerRight: () => (
-          <View style={{ flexDirection: 'row' }}>
-            <IconButton
-              icon={isDark ? 'weather-sunny' : 'weather-night'}
-              onPress={toggleTheme}
-              accessibilityLabel={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-            />
-            <IconButton icon="logout" onPress={logout} accessibilityLabel="Log out" />
-          </View>
+          <IconButton
+            icon={isDark ? 'weather-sunny' : 'weather-night'}
+            onPress={toggleTheme}
+            accessibilityLabel={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          />
         ),
       })}
     >
@@ -57,6 +54,7 @@ export default function AppNavigator() {
       <Tab.Screen name="Expenses" component={ExpensesNavigator} options={{ headerShown: false }} />
       <Tab.Screen name="Credit Cards" component={CreditCardsNavigator} options={{ headerShown: false }} />
       <Tab.Screen name="Accounts" component={BankAccountsNavigator} options={{ headerShown: false }} />
+      <Tab.Screen name="Money Owed" component={PeopleNavigator} options={{ headerShown: false, tabBarLabel: 'Owed' }} />
       <Tab.Screen name="Reports" component={ReportsScreen} />
     </Tab.Navigator>
   );

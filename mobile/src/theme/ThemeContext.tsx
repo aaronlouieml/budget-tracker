@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useColorScheme } from 'react-native';
-import { getToken, setToken } from '../auth/tokenStorage';
+import { getSecureValue, setSecureValue } from '../utils/secureStorage';
 
 const THEME_PREFERENCE_KEY = 'budget_tracker_theme_preference';
 
@@ -16,7 +16,7 @@ export function AppThemeProvider({ children }: { children: ReactNode }) {
   const [isDark, setIsDark] = useState(systemScheme === 'dark');
 
   useEffect(() => {
-    getToken(THEME_PREFERENCE_KEY).then((saved) => {
+    getSecureValue(THEME_PREFERENCE_KEY).then((saved) => {
       if (saved === 'light' || saved === 'dark') {
         setIsDark(saved === 'dark');
       }
@@ -26,7 +26,7 @@ export function AppThemeProvider({ children }: { children: ReactNode }) {
   function toggleTheme() {
     setIsDark((prev) => {
       const next = !prev;
-      setToken(THEME_PREFERENCE_KEY, next ? 'dark' : 'light');
+      setSecureValue(THEME_PREFERENCE_KEY, next ? 'dark' : 'light');
       return next;
     });
   }

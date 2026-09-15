@@ -3,12 +3,12 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import CreditCardsScreen from '../screens/CreditCardsScreen';
 import CreditCardFormScreen from '../screens/CreditCardFormScreen';
 import CreditCardDetailScreen from '../screens/CreditCardDetailScreen';
-import type { CreditCard } from '../api/creditCards';
+import type { CreditCard } from '../services/creditCardService';
 
 export type CreditCardsStackParamList = {
   CreditCardList: undefined;
   CreditCardForm: { card?: CreditCard } | undefined;
-  CreditCardDetail: { cardId: number };
+  CreditCardDetail: { cardId: string };
 };
 
 const Stack = createNativeStackNavigator<CreditCardsStackParamList>();

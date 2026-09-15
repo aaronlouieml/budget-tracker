@@ -4,22 +4,20 @@ import { ActivityIndicator, Button, IconButton, Text } from 'react-native-paper'
 import { CameraView, useCameraPermissions, type CameraCapturedPicture } from 'expo-camera';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import { useAuth } from '../auth/AuthContext';
-import { scanReceipt } from '../api/receipts';
-import { paperDarkTheme } from '../theme/theme';
 import type { ExpensesStackParamList } from '../navigation/ExpensesNavigator';
 
 type Props = NativeStackScreenProps<ExpensesStackParamList, 'ReceiptCamera'>;
 
+// Receipt OCR is not implemented in this local-only version (it required a
+// backend to call an OCR provider). The camera still attaches the photo to
+// the expense as before - the user just fills in the details manually,
+// reusing the existing "couldn't read this receipt" review banner.
 export default function ReceiptCameraScreen({ navigation }: Props) {
-  const { token } = useAuth();
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
 
   const [photo, setPhoto] = useState<CameraCapturedPicture | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
-  const [isScanning, setIsScanning] = useState(false);
-  const [scanError, setScanError] = useState<string | null>(null);
 
   async function handleCapture() {
     if (!cameraRef.current) return;
@@ -34,41 +32,19 @@ export default function ReceiptCameraScreen({ navigation }: Props) {
 
   function handleRetake() {
     setPhoto(null);
-    setScanError(null);
   }
 
-  async function handleUsePhoto() {
-    if (!photo?.base64 || !token) return;
-
-    setIsScanning(true);
-    setScanError(null);
-    try {
-      const result = await scanReceipt(token, photo.base64);
-      navigation.replace('ExpenseForm', {
-        scanned: {
-          amount: result.amount,
-          date: result.date,
-          merchant: result.merchant,
-          imageBase64: photo.base64,
-          ocrFailed: !result.success,
-          ocrError: result.error,
-        },
-      });
-    } catch (err) {
-      // Keep the photo - the user can still retry or continue manually.
-      navigation.replace('ExpenseForm', {
-        scanned: {
-          amount: null,
-          date: null,
-          merchant: null,
-          imageBase64: photo.base64,
-          ocrFailed: true,
-          ocrError: err instanceof Error ? err.message : 'Unable to scan receipt.',
-        },
-      });
-    } finally {
-      setIsScanning(false);
-    }
+  function handleUsePhoto() {
+    if (!photo?.base64) return;
+    navigation.replace('ExpenseForm', {
+      scanned: {
+        amount: null,
+        date: null,
+        merchant: null,
+        imageBase64: photo.base64,
+        ocrFailed: true,
+      },
+    });
   }
 
   if (!permission) {
@@ -105,19 +81,11 @@ export default function ReceiptCameraScreen({ navigation }: Props) {
     return (
       <View style={styles.container}>
         <Image source={{ uri: photo.uri }} style={styles.preview} resizeMode="contain" />
-        {scanError && (
-          // The camera viewfinder background is always black regardless of app theme,
-          // so this uses the dark-theme error color (built for contrast on dark surfaces)
-          // rather than the current theme's error color, which could be too dark here.
-          <Text variant="bodySmall" style={[styles.errorText, { color: paperDarkTheme.colors.error }]}>
-            {scanError}
-          </Text>
-        )}
         <View style={styles.reviewActions}>
-          <Button mode="outlined" onPress={handleRetake} disabled={isScanning} style={styles.reviewButton}>
+          <Button mode="outlined" onPress={handleRetake} style={styles.reviewButton}>
             Retake
           </Button>
-          <Button mode="contained" onPress={handleUsePhoto} loading={isScanning} disabled={isScanning} style={styles.reviewButton}>
+          <Button mode="contained" onPress={handleUsePhoto} style={styles.reviewButton}>
             Use Photo
           </Button>
         </View>

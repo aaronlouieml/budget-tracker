@@ -4,21 +4,9 @@ import { ActivityIndicator, Button, Dialog, Divider, IconButton, List, Menu, Por
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import { useAuth } from '../auth/AuthContext';
-import {
-  createIncoming,
-  createReservation,
-  deleteAccount,
-  deleteIncoming,
-  deleteReservation,
-  fetchAccount,
-  updateReservation,
-  type BankAccountDetail,
-  type Reservation,
-  type ReservationPurpose,
-} from '../api/bankAccounts';
-import { listCreditCards, type CreditCard } from '../api/creditCards';
-import { ApiError } from '../api/client';
+import { bankAccountService, type BankAccountDetail, type Reservation, type ReservationPurpose } from '../services/bankAccountService';
+import { creditCardService, type CreditCard } from '../services/creditCardService';
+import { ServiceError } from '../services/errors';
 import { ACCOUNT_TYPES, RESERVATION_PURPOSES } from '../constants/accountOptions';
 import { formatCurrency, formatDate } from '../utils/format';
 import { confirmDestructive } from '../utils/confirm';
@@ -30,7 +18,6 @@ const TYPE_LABELS = Object.fromEntries(ACCOUNT_TYPES.map((t) => [t.value, t.labe
 const PURPOSE_LABELS = Object.fromEntries(RESERVATION_PURPOSES.map((p) => [p.value, p.label]));
 
 export default function BankAccountDetailScreen({ route, navigation }: Props) {
-  const { token } = useAuth();
   const theme = useTheme();
   const { accountId } = route.params;
 
@@ -40,11 +27,11 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
   const [cards, setCards] = useState<CreditCard[]>([]);
 
   const [isReserveDialogVisible, setReserveDialogVisible] = useState(false);
-  const [editingReservationId, setEditingReservationId] = useState<number | null>(null);
+  const [editingReservationId, setEditingReservationId] = useState<string | null>(null);
   const [reserveName, setReserveName] = useState('');
   const [reserveAmount, setReserveAmount] = useState('');
   const [reservePurpose, setReservePurpose] = useState<ReservationPurpose>('credit_card_payment');
-  const [reserveCardId, setReserveCardId] = useState<number | null>(null);
+  const [reserveCardId, setReserveCardId] = useState<string | null>(null);
   const [isCardMenuVisible, setCardMenuVisible] = useState(false);
   const [reserveError, setReserveError] = useState<string | null>(null);
   const [isSubmittingReserve, setIsSubmittingReserve] = useState(false);
@@ -56,40 +43,37 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
   const [isSubmittingIncoming, setIsSubmittingIncoming] = useState(false);
 
   const loadDetail = useCallback(async () => {
-    if (!token) return;
     setError(null);
     try {
-      const data = await fetchAccount(token, accountId);
+      const data = await bankAccountService.fetchAccount(accountId);
       setDetail(data);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Unable to load account.');
+      setError(err instanceof ServiceError ? err.message : 'Unable to load account.');
     } finally {
       setIsLoading(false);
     }
-  }, [token, accountId]);
+  }, [accountId]);
 
   useFocusEffect(
     useCallback(() => {
       loadDetail();
-      if (token) {
-        listCreditCards(token)
-          .then(setCards)
-          .catch(() => {
-            // Non-critical: the credit card picker just falls back to "no cards" state.
-          });
-      }
-    }, [loadDetail, token])
+      creditCardService
+        .listCards()
+        .then(setCards)
+        .catch(() => {
+          // Non-critical: the credit card picker just falls back to "no cards" state.
+        });
+    }, [loadDetail])
   );
 
   function handleDeleteAccount() {
     if (!detail) return;
     confirmDestructive('Delete account?', `${detail.account.name} and its reservations will be removed.`, 'Delete', async () => {
-      if (!token) return;
       try {
-        await deleteAccount(token, accountId);
+        await bankAccountService.deleteAccount(accountId);
         navigation.goBack();
       } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Unable to delete account.');
+        setError(err instanceof ServiceError ? err.message : 'Unable to delete account.');
       }
     });
   }
@@ -129,7 +113,6 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
   }
 
   async function handleSaveReservation() {
-    if (!token) return;
     const name = reserveName.trim();
     if (!name) {
       setReserveError('Enter a name');
@@ -151,27 +134,26 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
         creditCardId: reservePurpose === 'credit_card_payment' ? reserveCardId : null,
       };
       if (editingReservationId !== null) {
-        await updateReservation(token, accountId, editingReservationId, input);
+        await bankAccountService.updateReservation(accountId, editingReservationId, input);
       } else {
-        await createReservation(token, accountId, input);
+        await bankAccountService.createReservation(accountId, input);
       }
       setReserveDialogVisible(false);
       await loadDetail();
     } catch (err) {
-      setReserveError(err instanceof ApiError ? err.message : 'Unable to save reservation.');
+      setReserveError(err instanceof ServiceError ? err.message : 'Unable to save reservation.');
     } finally {
       setIsSubmittingReserve(false);
     }
   }
 
-  function handleDeleteReservation(reservationId: number) {
+  function handleDeleteReservation(reservationId: string) {
     confirmDestructive('Remove reservation?', 'This money will become available again.', 'Remove', async () => {
-      if (!token) return;
       try {
-        await deleteReservation(token, accountId, reservationId);
+        await bankAccountService.deleteReservation(accountId, reservationId);
         await loadDetail();
       } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Unable to remove reservation.');
+        setError(err instanceof ServiceError ? err.message : 'Unable to remove reservation.');
       }
     });
   }
@@ -184,7 +166,6 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
   }
 
   async function handleCreateIncoming() {
-    if (!token) return;
     const amountValue = Number(incomingAmount);
     if (!incomingAmount || Number.isNaN(amountValue) || amountValue <= 0) {
       setIncomingError('Enter a valid amount');
@@ -194,24 +175,23 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
     setIsSubmittingIncoming(true);
     setIncomingError(null);
     try {
-      await createIncoming(token, accountId, { amount: amountValue, description: incomingDescription.trim() || null });
+      await bankAccountService.createIncoming(accountId, { amount: amountValue, description: incomingDescription.trim() || null });
       setIncomingDialogVisible(false);
       await loadDetail();
     } catch (err) {
-      setIncomingError(err instanceof ApiError ? err.message : 'Unable to record incoming money.');
+      setIncomingError(err instanceof ServiceError ? err.message : 'Unable to record incoming money.');
     } finally {
       setIsSubmittingIncoming(false);
     }
   }
 
-  function handleDeleteIncoming(incomingId: number) {
+  function handleDeleteIncoming(incomingId: string) {
     confirmDestructive('Remove incoming money?', 'This will no longer count toward potential available.', 'Remove', async () => {
-      if (!token) return;
       try {
-        await deleteIncoming(token, accountId, incomingId);
+        await bankAccountService.deleteIncoming(accountId, incomingId);
         await loadDetail();
       } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Unable to remove incoming money.');
+        setError(err instanceof ServiceError ? err.message : 'Unable to remove incoming money.');
       }
     });
   }

@@ -17,10 +17,9 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import { useAuth } from '../auth/AuthContext';
-import { deleteCreditCard, fetchCreditCard, payFromAccount, recordPayment, type CreditCardDetail, type PaySource } from '../api/creditCards';
-import { fetchAccount, listAccounts, type BankAccount, type BankAccountDetail } from '../api/bankAccounts';
-import { ApiError } from '../api/client';
+import { creditCardService, type CreditCardDetail, type PaySource } from '../services/creditCardService';
+import { bankAccountService, type BankAccount, type BankAccountDetail } from '../services/bankAccountService';
+import { ServiceError } from '../services/errors';
 import { STATUS_COLORS, STATUS_LABELS } from '../constants/cardStatus';
 import { formatCurrency, formatDate, todayISODate } from '../utils/format';
 import { confirmDestructive } from '../utils/confirm';
@@ -30,7 +29,6 @@ import type { CreditCardsStackParamList } from '../navigation/CreditCardsNavigat
 type Props = NativeStackScreenProps<CreditCardsStackParamList, 'CreditCardDetail'>;
 
 export default function CreditCardDetailScreen({ route, navigation }: Props) {
-  const { token } = useAuth();
   const theme = useTheme();
   const { cardId } = route.params;
 
@@ -47,50 +45,47 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [isPayDialogVisible, setPayDialogVisible] = useState(false);
   const [payAmount, setPayAmount] = useState('');
-  const [payAccountId, setPayAccountId] = useState<number | null>(null);
+  const [payAccountId, setPayAccountId] = useState<string | null>(null);
   const [payAccountDetail, setPayAccountDetail] = useState<BankAccountDetail | null>(null);
   const [isLoadingPayAccount, setIsLoadingPayAccount] = useState(false);
   const [paySource, setPaySource] = useState<PaySource>('available');
-  const [payReservationId, setPayReservationId] = useState<number | null>(null);
+  const [payReservationId, setPayReservationId] = useState<string | null>(null);
   const [isAccountMenuVisible, setAccountMenuVisible] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
   const [isSubmittingPay, setIsSubmittingPay] = useState(false);
 
   const loadDetail = useCallback(async () => {
-    if (!token) return;
     setError(null);
     try {
-      const data = await fetchCreditCard(token, cardId);
+      const data = await creditCardService.fetchCard(cardId);
       setDetail(data);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Unable to load credit card.');
+      setError(err instanceof ServiceError ? err.message : 'Unable to load credit card.');
     } finally {
       setIsLoading(false);
     }
-  }, [token, cardId]);
+  }, [cardId]);
 
   useFocusEffect(
     useCallback(() => {
       loadDetail();
-      if (token) {
-        listAccounts(token)
-          .then(setAccounts)
-          .catch(() => {
-            // Non-critical: the "Pay from Account" picker just falls back to "no accounts" state.
-          });
-      }
-    }, [loadDetail, token])
+      bankAccountService
+        .listAccounts()
+        .then(setAccounts)
+        .catch(() => {
+          // Non-critical: the "Pay from Account" picker just falls back to "no accounts" state.
+        });
+    }, [loadDetail])
   );
 
   function handleDelete() {
     if (!detail) return;
     confirmDestructive('Delete card?', `${detail.card.name} will be removed. Its expenses will be kept.`, 'Delete', async () => {
-      if (!token) return;
       try {
-        await deleteCreditCard(token, cardId);
+        await creditCardService.deleteCard(cardId);
         navigation.goBack();
       } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Unable to delete credit card.');
+        setError(err instanceof ServiceError ? err.message : 'Unable to delete credit card.');
       }
     });
   }
@@ -117,7 +112,6 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
   }
 
   async function handleRecordPayment() {
-    if (!token) return;
     const amountValue = Number(paymentAmount);
     if (!paymentAmount || Number.isNaN(amountValue) || amountValue <= 0) {
       setPaymentError('Enter a valid amount');
@@ -127,11 +121,11 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
     setIsSubmittingPayment(true);
     setPaymentError(null);
     try {
-      await recordPayment(token, cardId, { amount: amountValue, date: paymentDate });
+      await creditCardService.recordPayment(cardId, { amount: amountValue, date: paymentDate });
       setPaymentDialogVisible(false);
       await loadDetail();
     } catch (err) {
-      setPaymentError(err instanceof ApiError ? err.message : 'Unable to record payment.');
+      setPaymentError(err instanceof ServiceError ? err.message : 'Unable to record payment.');
     } finally {
       setIsSubmittingPayment(false);
     }
@@ -153,20 +147,18 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
     setPaySource('available');
     setPayReservationId(null);
     setPayError(null);
-    if (!token) return;
     setIsLoadingPayAccount(true);
     try {
-      const fullDetail = await fetchAccount(token, account.id);
+      const fullDetail = await bankAccountService.fetchAccount(account.id);
       setPayAccountDetail(fullDetail);
     } catch (err) {
-      setPayError(err instanceof ApiError ? err.message : 'Unable to load account details.');
+      setPayError(err instanceof ServiceError ? err.message : 'Unable to load account details.');
     } finally {
       setIsLoadingPayAccount(false);
     }
   }
 
   async function handlePayFromAccount() {
-    if (!token) return;
     const amountValue = Number(payAmount);
     if (!payAmount || Number.isNaN(amountValue) || amountValue <= 0) {
       setPayError('Enter a valid amount');
@@ -184,16 +176,17 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
     setIsSubmittingPay(true);
     setPayError(null);
     try {
-      await payFromAccount(token, cardId, {
+      await creditCardService.payFromAccount(cardId, {
         bankAccountId: payAccountId,
         amount: amountValue,
         source: paySource,
         reservationId: paySource === 'reservation' && payReservationId !== null ? payReservationId : undefined,
+        date: todayISODate(),
       });
       setPayDialogVisible(false);
       await loadDetail();
     } catch (err) {
-      setPayError(err instanceof ApiError ? err.message : 'Unable to pay from account.');
+      setPayError(err instanceof ServiceError ? err.message : 'Unable to pay from account.');
     } finally {
       setIsSubmittingPay(false);
     }
@@ -386,14 +379,14 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
                         No active reservations on this account.
                       </Text>
                     ) : (
-                      <RadioButton.Group value={String(payReservationId ?? '')} onValueChange={(value) => setPayReservationId(Number(value))}>
+                      <RadioButton.Group value={payReservationId ?? ''} onValueChange={(value) => setPayReservationId(value)}>
                         {payAccountDetail.reservations
                           .filter((r) => r.status === 'reserved')
                           .map((r) => (
                             <RadioButton.Item
                               key={r.id}
                               label={`${r.name} — ${formatCurrency(r.amount)}`}
-                              value={String(r.id)}
+                              value={r.id}
                               style={styles.radioItem}
                             />
                           ))}

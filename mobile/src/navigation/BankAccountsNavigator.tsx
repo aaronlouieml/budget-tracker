@@ -3,12 +3,12 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import BankAccountsScreen from '../screens/BankAccountsScreen';
 import BankAccountFormScreen from '../screens/BankAccountFormScreen';
 import BankAccountDetailScreen from '../screens/BankAccountDetailScreen';
-import type { BankAccount } from '../api/bankAccounts';
+import type { BankAccount } from '../services/bankAccountService';
 
 export type BankAccountsStackParamList = {
   AccountList: undefined;
   AccountForm: { account?: BankAccount } | undefined;
-  AccountDetail: { accountId: number };
+  AccountDetail: { accountId: string };
 };
 
 const Stack = createNativeStackNavigator<BankAccountsStackParamList>();

@@ -4,9 +4,8 @@ import { ActivityIndicator, Button, Card, Divider, List, Text, useTheme } from '
 import { PieChart } from 'react-native-chart-kit';
 import { useFocusEffect } from '@react-navigation/native';
 
-import { useAuth } from '../auth/AuthContext';
-import { fetchDashboard, type DashboardData } from '../api/dashboard';
-import { ApiError } from '../api/client';
+import { dashboardService, type DashboardData } from '../services/dashboardService';
+import { ServiceError } from '../services/errors';
 import { PAYMENT_METHODS } from '../constants/expenseOptions';
 import { colorForCategory } from '../constants/categoryColors';
 import { formatCurrency, formatDate } from '../utils/format';
@@ -15,7 +14,6 @@ import { useChartTheme } from '../hooks/useChartTheme';
 const PAYMENT_METHOD_LABELS = Object.fromEntries(PAYMENT_METHODS.map((m) => [m.value, m.label]));
 
 export default function HomeScreen() {
-  const { token } = useAuth();
   const theme = useTheme();
   const { chartConfig, legendFontColor } = useChartTheme();
   const { width: screenWidth } = useWindowDimensions();
@@ -24,17 +22,16 @@ export default function HomeScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const loadDashboard = useCallback(async () => {
-    if (!token) return;
     setError(null);
     try {
-      const data = await fetchDashboard(token);
+      const data = await dashboardService.getDashboard();
       setDashboard(data);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Unable to load dashboard.');
+      setError(err instanceof ServiceError ? err.message : 'Unable to load dashboard.');
     } finally {
       setIsLoading(false);
     }
-  }, [token]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
