@@ -8,7 +8,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.budgettracker.mobile"
+      "bundleIdentifier": "com.aaronlouieml.budgettracker"
     },
     "android": {
       "package": "com.budgettracker.mobile",
@@ -31,7 +31,8 @@
         {
           "cameraPermission": "Budget Tracker uses the camera to scan receipts."
         }
-      ]
+      ],
+      "expo-sqlite"
     ]
   }
 }

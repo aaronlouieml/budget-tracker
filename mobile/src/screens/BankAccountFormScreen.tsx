@@ -3,17 +3,14 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 're
 import { Button, Chip, Text, TextInput, useTheme } from 'react-native-paper';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import { useAuth } from '../auth/AuthContext';
-import { createAccount, updateAccount } from '../api/bankAccounts';
-import { ApiError } from '../api/client';
+import { bankAccountService, type AccountType } from '../services/bankAccountService';
+import { ServiceError } from '../services/errors';
 import { ACCOUNT_TYPES } from '../constants/accountOptions';
 import type { BankAccountsStackParamList } from '../navigation/BankAccountsNavigator';
-import type { AccountType } from '../api/bankAccounts';
 
 type Props = NativeStackScreenProps<BankAccountsStackParamList, 'AccountForm'>;
 
 export default function BankAccountFormScreen({ route, navigation }: Props) {
-  const { token } = useAuth();
   const theme = useTheme();
   const existing = route.params?.account;
   const isEditing = !!existing;
@@ -37,8 +34,6 @@ export default function BankAccountFormScreen({ route, navigation }: Props) {
   }
 
   async function handleSave() {
-    if (!token) return;
-
     const problems = validate();
     setErrors(problems);
     setApiError(null);
@@ -49,13 +44,13 @@ export default function BankAccountFormScreen({ route, navigation }: Props) {
 
     try {
       if (isEditing && existing) {
-        await updateAccount(token, existing.id, input);
+        await bankAccountService.updateAccount(existing.id, input);
       } else {
-        await createAccount(token, input);
+        await bankAccountService.createAccount(input);
       }
       navigation.goBack();
     } catch (err) {
-      setApiError(err instanceof ApiError ? err.message : 'Unable to save account. Please try again.');
+      setApiError(err instanceof ServiceError ? err.message : 'Unable to save account. Please try again.');
     } finally {
       setIsSubmitting(false);
     }

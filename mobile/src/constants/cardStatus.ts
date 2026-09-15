@@ -1,4 +1,4 @@
-import type { CardStatus } from '../api/creditCards';
+import type { CardStatus } from '../services/creditCardService';
 
 export const STATUS_LABELS: Record<CardStatus, string> = {
   paid: 'Paid',

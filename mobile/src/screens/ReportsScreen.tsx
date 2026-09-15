@@ -4,9 +4,8 @@ import { ActivityIndicator, Button, Card, SegmentedButtons, Text, useTheme } fro
 import { PieChart, BarChart } from 'react-native-chart-kit';
 import { useFocusEffect } from '@react-navigation/native';
 
-import { useAuth } from '../auth/AuthContext';
-import { fetchReport, type ReportData, type ReportPeriod } from '../api/reports';
-import { ApiError } from '../api/client';
+import { reportService, type ReportData, type Period as ReportPeriod } from '../services/reportService';
+import { ServiceError } from '../services/errors';
 import { colorForCategory } from '../constants/categoryColors';
 import { formatCurrency } from '../utils/format';
 import { useChartTheme } from '../hooks/useChartTheme';
@@ -18,7 +17,6 @@ const PERIOD_OPTIONS: { value: ReportPeriod; label: string }[] = [
 ];
 
 export default function ReportsScreen() {
-  const { token } = useAuth();
   const theme = useTheme();
   const { chartConfig, legendFontColor } = useChartTheme();
   const { width: screenWidth } = useWindowDimensions();
@@ -27,22 +25,18 @@ export default function ReportsScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadReport = useCallback(
-    async (p: ReportPeriod) => {
-      if (!token) return;
-      setError(null);
-      setIsLoading(true);
-      try {
-        const data = await fetchReport(token, p);
-        setReport(data);
-      } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Unable to load report.');
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [token]
-  );
+  const loadReport = useCallback(async (p: ReportPeriod) => {
+    setError(null);
+    setIsLoading(true);
+    try {
+      const data = await reportService.getReport(p);
+      setReport(data);
+    } catch (err) {
+      setError(err instanceof ServiceError ? err.message : 'Unable to load report.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useFocusEffect(
     useCallback(() => {

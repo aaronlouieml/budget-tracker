@@ -3,15 +3,13 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 're
 import { Button, HelperText, Text, TextInput, useTheme } from 'react-native-paper';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import { useAuth } from '../auth/AuthContext';
-import { createCreditCard, updateCreditCard } from '../api/creditCards';
-import { ApiError } from '../api/client';
+import { creditCardService } from '../services/creditCardService';
+import { ServiceError } from '../services/errors';
 import type { CreditCardsStackParamList } from '../navigation/CreditCardsNavigator';
 
 type Props = NativeStackScreenProps<CreditCardsStackParamList, 'CreditCardForm'>;
 
 export default function CreditCardFormScreen({ route, navigation }: Props) {
-  const { token } = useAuth();
   const theme = useTheme();
   const existing = route.params?.card;
   const isEditing = !!existing;
@@ -37,8 +35,6 @@ export default function CreditCardFormScreen({ route, navigation }: Props) {
   }
 
   async function handleSave() {
-    if (!token) return;
-
     const problems = validate();
     setErrors(problems);
     setApiError(null);
@@ -49,13 +45,13 @@ export default function CreditCardFormScreen({ route, navigation }: Props) {
 
     try {
       if (isEditing && existing) {
-        await updateCreditCard(token, existing.id, input);
+        await creditCardService.updateCard(existing.id, input);
       } else {
-        await createCreditCard(token, input);
+        await creditCardService.createCard(input);
       }
       navigation.goBack();
     } catch (err) {
-      setApiError(err instanceof ApiError ? err.message : 'Unable to save credit card. Please try again.');
+      setApiError(err instanceof ServiceError ? err.message : 'Unable to save credit card. Please try again.');
     } finally {
       setIsSubmitting(false);
     }

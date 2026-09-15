@@ -4,9 +4,8 @@ import { ActivityIndicator, Button, Card, FAB, Text, useTheme } from 'react-nati
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import { useAuth } from '../auth/AuthContext';
-import { listAccounts, type BankAccount } from '../api/bankAccounts';
-import { ApiError } from '../api/client';
+import { bankAccountService, type BankAccount } from '../services/bankAccountService';
+import { ServiceError } from '../services/errors';
 import { ACCOUNT_TYPES } from '../constants/accountOptions';
 import { formatCurrency } from '../utils/format';
 import type { BankAccountsStackParamList } from '../navigation/BankAccountsNavigator';
@@ -16,24 +15,22 @@ type Props = NativeStackScreenProps<BankAccountsStackParamList, 'AccountList'>;
 const TYPE_LABELS = Object.fromEntries(ACCOUNT_TYPES.map((t) => [t.value, t.label]));
 
 export default function BankAccountsScreen({ navigation }: Props) {
-  const { token } = useAuth();
   const theme = useTheme();
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const loadAccounts = useCallback(async () => {
-    if (!token) return;
     setError(null);
     try {
-      const data = await listAccounts(token);
+      const data = await bankAccountService.listAccounts();
       setAccounts(data);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Unable to load accounts.');
+      setError(err instanceof ServiceError ? err.message : 'Unable to load accounts.');
     } finally {
       setIsLoading(false);
     }
-  }, [token]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {

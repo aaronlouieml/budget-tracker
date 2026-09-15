@@ -4,9 +4,8 @@ import { ActivityIndicator, Button, Divider, FAB, IconButton, List, Snackbar, Te
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import { useAuth } from '../auth/AuthContext';
-import { deleteExpense, listExpenses, type Expense } from '../api/expenses';
-import { ApiError } from '../api/client';
+import { expenseService, type Expense } from '../services/expenseService';
+import { ServiceError } from '../services/errors';
 import { PAYMENT_METHODS } from '../constants/expenseOptions';
 import { formatCurrency, formatDate } from '../utils/format';
 import { confirmDestructive } from '../utils/confirm';
@@ -17,7 +16,6 @@ type Props = NativeStackScreenProps<ExpensesStackParamList, 'ExpenseList'>;
 const PAYMENT_METHOD_LABELS = Object.fromEntries(PAYMENT_METHODS.map((m) => [m.value, m.label]));
 
 export default function ExpensesScreen({ navigation }: Props) {
-  const { token } = useAuth();
   const theme = useTheme();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -26,17 +24,16 @@ export default function ExpensesScreen({ navigation }: Props) {
   const [isFabOpen, setFabOpen] = useState(false);
 
   const loadExpenses = useCallback(async () => {
-    if (!token) return;
     setError(null);
     try {
-      const data = await listExpenses(token);
+      const data = await expenseService.listExpenses();
       setExpenses(data);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Unable to load expenses.');
+      setError(err instanceof ServiceError ? err.message : 'Unable to load expenses.');
     } finally {
       setIsLoading(false);
     }
-  }, [token]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -46,13 +43,12 @@ export default function ExpensesScreen({ navigation }: Props) {
 
   function handleDelete(expense: Expense) {
     confirmDestructive('Delete expense?', `${expense.category} · ${formatCurrency(expense.amount)}`, 'Delete', async () => {
-      if (!token) return;
       try {
-        await deleteExpense(token, expense.id);
+        await expenseService.deleteExpense(expense.id);
         setExpenses((prev) => prev.filter((e) => e.id !== expense.id));
         setFlash('Expense deleted');
       } catch (err) {
-        Alert.alert('Error', err instanceof ApiError ? err.message : 'Unable to delete expense.');
+        Alert.alert('Error', err instanceof ServiceError ? err.message : 'Unable to delete expense.');
       }
     });
   }
@@ -100,7 +96,7 @@ export default function ExpensesScreen({ navigation }: Props) {
             description={`${item.merchant ? item.merchant + ' · ' : ''}${formatDate(item.date)}${
               item.payment_method ? ' · ' + (PAYMENT_METHOD_LABELS[item.payment_method] ?? item.payment_method) : ''
             }`}
-            onPress={() => navigation.navigate('ExpenseForm', { expense: item })}
+            onPress={() => navigation.navigate('ExpenseDetail', { expenseId: item.id })}
             right={() => (
               <View style={styles.rightContent}>
                 <Text variant="titleMedium">{formatCurrency(item.amount)}</Text>

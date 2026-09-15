@@ -1,4 +1,4 @@
-import type { AccountType, ReservationPurpose } from '../api/bankAccounts';
+import type { AccountType, ReservationPurpose } from '../services/bankAccountService';
 
 export const ACCOUNT_TYPES: { label: string; value: AccountType }[] = [
   { label: 'Savings', value: 'savings' },
