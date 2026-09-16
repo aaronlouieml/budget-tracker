@@ -31,6 +31,11 @@ export const expenseRepository = {
     return db.getAllAsync<ExpenseRow>(`SELECT ${LIST_COLUMNS} FROM expenses ORDER BY date DESC, created_at DESC`);
   },
 
+  async forAccount(accountId: string): Promise<ExpenseRow[]> {
+    const db = await getDb();
+    return db.getAllAsync<ExpenseRow>(`SELECT ${LIST_COLUMNS} FROM expenses WHERE bank_account_id = ? ORDER BY date DESC, created_at DESC`, accountId);
+  },
+
   async findById(id: string): Promise<ExpenseRow | null> {
     const db = await getDb();
     return db.getFirstAsync<ExpenseRow>('SELECT * FROM expenses WHERE id = ?', id);

@@ -5,6 +5,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { personService } from '../services/personService';
 import { ServiceError } from '../services/errors';
+import DismissKeyboardView from '../components/DismissKeyboardView';
 import type { PeopleStackParamList } from '../navigation/PeopleNavigator';
 
 type Props = NativeStackScreenProps<PeopleStackParamList, 'PersonForm'>;
@@ -44,6 +45,7 @@ export default function PersonFormScreen({ route, navigation }: Props) {
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <DismissKeyboardView>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <TextInput label="Name" value={name} onChangeText={setName} placeholder="Mau" style={styles.field} />
 
@@ -62,6 +64,7 @@ export default function PersonFormScreen({ route, navigation }: Props) {
           Save
         </Button>
       </ScrollView>
+      </DismissKeyboardView>
     </KeyboardAvoidingView>
   );
 }

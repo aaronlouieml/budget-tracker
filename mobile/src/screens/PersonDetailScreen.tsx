@@ -10,6 +10,8 @@ import { ServiceError } from '../services/errors';
 import { PAYMENT_METHODS } from '../constants/expenseOptions';
 import { formatCurrency, formatDate, todayISODate } from '../utils/format';
 import { confirmDestructive } from '../utils/confirm';
+import DismissKeyboardView from '../components/DismissKeyboardView';
+import DoneAccessory, { DONE_ACCESSORY_ID } from '../components/DoneAccessory';
 import type { PeopleStackParamList } from '../navigation/PeopleNavigator';
 
 type Props = NativeStackScreenProps<PeopleStackParamList, 'PersonDetail'>;
@@ -134,17 +136,34 @@ export default function PersonDetailScreen({ route, navigation }: Props) {
     );
   }
 
-  const { outstanding, shares, payments } = detail;
+  const { outstanding, shares, payments, person } = detail;
   const selectedAccount = accounts.find((a) => a.id === payAccountId);
 
   return (
     <>
+      <DismissKeyboardView>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.summary}>
           <Text variant="displaySmall">{formatCurrency(outstanding)}</Text>
           <Text variant="bodyMedium" style={styles.mutedLabel}>
-            Outstanding
+            Net
           </Text>
+
+          <View style={styles.summaryRow}>
+            <View style={styles.summaryCol}>
+              <Text variant="bodySmall" style={styles.mutedLabel}>
+                Owes Me
+              </Text>
+              <Text variant="titleMedium">{formatCurrency(person.owesMe)}</Text>
+            </View>
+            <View style={styles.summaryCol}>
+              <Text variant="bodySmall" style={styles.mutedLabel}>
+                I Owe
+              </Text>
+              <Text variant="titleMedium">{formatCurrency(person.iOwe)}</Text>
+            </View>
+          </View>
+
           {Number(outstanding) > 0 && (
             <Button mode="contained" onPress={openPayDialog} icon="cash-check" style={styles.payButton}>
               Record Payment
@@ -201,6 +220,7 @@ export default function PersonDetailScreen({ route, navigation }: Props) {
           ))
         )}
       </ScrollView>
+      </DismissKeyboardView>
 
       <Portal>
         <Dialog visible={isPayDialogVisible} onDismiss={() => setPayDialogVisible(false)}>
@@ -211,6 +231,7 @@ export default function PersonDetailScreen({ route, navigation }: Props) {
               value={payAmount}
               onChangeText={setPayAmount}
               keyboardType="decimal-pad"
+              inputAccessoryViewID={DONE_ACCESSORY_ID}
               left={<TextInput.Affix text="₱" />}
               style={styles.dialogField}
             />
@@ -261,6 +282,7 @@ export default function PersonDetailScreen({ route, navigation }: Props) {
           </Dialog.Actions>
         </Dialog>
       </Portal>
+      <DoneAccessory />
     </>
   );
 }
@@ -282,6 +304,14 @@ const styles = StyleSheet.create({
   },
   mutedLabel: {
     opacity: 0.6,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    gap: 32,
+    marginTop: 16,
+  },
+  summaryCol: {
+    alignItems: 'center',
   },
   payButton: {
     marginTop: 16,

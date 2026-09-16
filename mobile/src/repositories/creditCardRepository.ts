@@ -1,5 +1,6 @@
 import { getDb } from '../database/sqlite';
 import { newId, nowISO } from '../utils/money';
+import { calculateResponsibility } from '../services/financialMath';
 
 export interface CreditCardRow {
   id: string;
@@ -13,6 +14,7 @@ export interface CreditCardRow {
 export interface PaymentRow {
   id: string;
   credit_card_id: string;
+  bank_account_id: string | null;
   amount_cents: number;
   date: string;
   created_at: string;
@@ -91,15 +93,67 @@ export const creditCardRepository = {
     );
   },
 
-  async paymentsForCard(cardId: string): Promise<PaymentRow[]> {
+  // shares_total per expense on this card, so each transaction can show its
+  // own my-share/others-owe split (not just the card-level total).
+  async shareTotalsForCard(cardId: string): Promise<Map<string, number>> {
     const db = await getDb();
-    return db.getAllAsync<PaymentRow>('SELECT * FROM payments WHERE credit_card_id = ? ORDER BY date DESC, created_at DESC', cardId);
+    const rows = await db.getAllAsync<{ expense_id: string; total: number }>(
+      `SELECT es.expense_id, COALESCE(SUM(es.amount_cents), 0) AS total
+       FROM expense_shares es
+       JOIN expenses e ON e.id = es.expense_id
+       WHERE e.credit_card_id = ?
+       GROUP BY es.expense_id`,
+      cardId
+    );
+    return new Map(rows.map((r) => [r.expense_id, r.total]));
   },
 
-  async insertPayment(input: { creditCardId: string; amountCents: number; date: string }): Promise<PaymentRow> {
+  async paymentsForCard(cardId: string): Promise<(PaymentRow & { bank_account_name: string | null })[]> {
+    const db = await getDb();
+    return db.getAllAsync(
+      `SELECT p.*, a.name AS bank_account_name FROM payments p LEFT JOIN bank_accounts a ON a.id = p.bank_account_id WHERE p.credit_card_id = ? ORDER BY p.date DESC, p.created_at DESC`,
+      cardId
+    );
+  },
+
+  async insertPayment(input: { creditCardId: string; bankAccountId?: string | null; amountCents: number; date: string }): Promise<PaymentRow> {
     const db = await getDb();
     const id = newId();
-    await db.runAsync('INSERT INTO payments (id, credit_card_id, amount_cents, date, created_at) VALUES (?, ?, ?, ?, ?)', id, input.creditCardId, input.amountCents, input.date, nowISO());
+    await db.runAsync(
+      'INSERT INTO payments (id, credit_card_id, bank_account_id, amount_cents, date, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      id,
+      input.creditCardId,
+      input.bankAccountId ?? null,
+      input.amountCents,
+      input.date,
+      nowISO()
+    );
     return (await db.getFirstAsync<PaymentRow>('SELECT * FROM payments WHERE id = ?', id))!;
+  },
+
+  async paymentsForAccount(accountId: string): Promise<(PaymentRow & { credit_card_name: string })[]> {
+    const db = await getDb();
+    return db.getAllAsync(
+      `SELECT p.*, c.name AS credit_card_name FROM payments p JOIN credit_cards c ON c.id = p.credit_card_id WHERE p.bank_account_id = ? ORDER BY p.date DESC, p.created_at DESC`,
+      accountId
+    );
+  },
+
+  // For each of a card's expenses, "my share" is the expense amount minus
+  // whatever was split out to other people via expense_shares. Summed across
+  // the card's transactions this gives the card-level responsibility split -
+  // computed fresh each time, never stored, and independent of payment
+  // history (payments just reduce the card's overall outstanding balance).
+  async responsibilityTotals(cardId: string): Promise<{ myResponsibilityCents: number; othersOweCents: number }> {
+    const db = await getDb();
+    const rows = await db.getAllAsync<{ amount_cents: number; shares_total: number }>(
+      `SELECT e.amount_cents AS amount_cents, COALESCE(SUM(es.amount_cents), 0) AS shares_total
+       FROM expenses e
+       LEFT JOIN expense_shares es ON es.expense_id = e.id
+       WHERE e.credit_card_id = ?
+       GROUP BY e.id`,
+      cardId
+    );
+    return calculateResponsibility(rows.map((r) => ({ amountCents: r.amount_cents, sharesTotalCents: r.shares_total })));
   },
 };

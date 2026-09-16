@@ -24,6 +24,8 @@ import { STATUS_COLORS, STATUS_LABELS } from '../constants/cardStatus';
 import { formatCurrency, formatDate, todayISODate } from '../utils/format';
 import { confirmDestructive } from '../utils/confirm';
 import DateField from '../components/DateField';
+import DismissKeyboardView from '../components/DismissKeyboardView';
+import DoneAccessory, { DONE_ACCESSORY_ID } from '../components/DoneAccessory';
 import type { CreditCardsStackParamList } from '../navigation/CreditCardsNavigator';
 
 type Props = NativeStackScreenProps<CreditCardsStackParamList, 'CreditCardDetail'>;
@@ -218,6 +220,7 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
 
   return (
     <>
+      <DismissKeyboardView>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.summary}>
           <Text variant="bodyMedium" style={styles.bank}>
@@ -236,6 +239,23 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
             </View>
             <Text variant="bodyMedium">Due {formatDate(card.next_due_date)}</Text>
           </View>
+
+          {Number(card.othersOwe) > 0 && (
+            <View style={styles.responsibilityRow}>
+              <View style={styles.summaryCol}>
+                <Text variant="bodySmall" style={styles.mutedLabel}>
+                  My Responsibility
+                </Text>
+                <Text variant="titleMedium">{formatCurrency(card.myResponsibility)}</Text>
+              </View>
+              <View style={styles.summaryCol}>
+                <Text variant="bodySmall" style={styles.mutedLabel}>
+                  Others Owe Me
+                </Text>
+                <Text variant="titleMedium">{formatCurrency(card.othersOwe)}</Text>
+              </View>
+            </View>
+          )}
 
           <View style={styles.buttonRow}>
             <Button mode="contained" onPress={openPaymentDialog} style={styles.actionButton} icon="cash-plus">
@@ -259,7 +279,12 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
             <View key={item.id}>
               <List.Item
                 title={item.category}
-                description={`${item.merchant ? item.merchant + ' · ' : ''}${formatDate(item.date)}`}
+                description={
+                  Number(item.othersOwe) > 0
+                    ? `${item.merchant ? item.merchant + ' · ' : ''}${formatDate(item.date)}\nMy Share ${formatCurrency(item.myShare)} · Others Owe Me ${formatCurrency(item.othersOwe)}`
+                    : `${item.merchant ? item.merchant + ' · ' : ''}${formatDate(item.date)}`
+                }
+                descriptionNumberOfLines={2}
                 right={() => (
                   <Text variant="titleMedium" style={styles.rowAmount}>
                     {formatCurrency(item.amount)}
@@ -283,7 +308,7 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
             <View key={item.id}>
               <List.Item
                 title={formatCurrency(item.amount)}
-                description={formatDate(item.date)}
+                description={item.bank_account_name ? `Paid from ${item.bank_account_name} · ${formatDate(item.date)}` : formatDate(item.date)}
                 left={(props) => <List.Icon {...props} icon="check-circle-outline" />}
               />
               {index < payments.length - 1 && <Divider />}
@@ -291,6 +316,7 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
           ))
         )}
       </ScrollView>
+      </DismissKeyboardView>
 
       <Portal>
         <Dialog visible={isPaymentDialogVisible} onDismiss={() => setPaymentDialogVisible(false)}>
@@ -301,6 +327,7 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
               value={paymentAmount}
               onChangeText={setPaymentAmount}
               keyboardType="decimal-pad"
+              inputAccessoryViewID={DONE_ACCESSORY_ID}
               left={<TextInput.Affix text="₱" />}
               style={styles.dialogField}
             />
@@ -329,9 +356,22 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
               value={payAmount}
               onChangeText={setPayAmount}
               keyboardType="decimal-pad"
+              inputAccessoryViewID={DONE_ACCESSORY_ID}
               left={<TextInput.Affix text="₱" />}
               style={styles.dialogField}
             />
+
+            {Number(card.othersOwe) > 0 && (
+              <View style={styles.payWhatIOweRow}>
+                <Text variant="bodySmall" style={styles.mutedLabel}>
+                  Outstanding {formatCurrency(card.unpaid)} · My Share {formatCurrency(card.myResponsibility)} · Others Owe Me{' '}
+                  {formatCurrency(card.othersOwe)}
+                </Text>
+                <Button mode="outlined" compact onPress={() => setPayAmount(card.payWhatIOwe)} style={styles.payWhatIOweButton}>
+                  Pay What I Owe ({formatCurrency(card.payWhatIOwe)})
+                </Button>
+              </View>
+            )}
 
             <Text variant="labelLarge" style={styles.dialogLabel}>
               Pay From
@@ -413,6 +453,7 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
           </Dialog.Actions>
         </Dialog>
       </Portal>
+      <DoneAccessory />
     </>
   );
 }
@@ -453,6 +494,21 @@ const styles = StyleSheet.create({
   },
   statusText: {
     color: '#FFFFFF',
+  },
+  responsibilityRow: {
+    flexDirection: 'row',
+    gap: 32,
+    marginTop: 16,
+  },
+  summaryCol: {
+    alignItems: 'center',
+  },
+  payWhatIOweRow: {
+    marginBottom: 16,
+  },
+  payWhatIOweButton: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
   },
   buttonRow: {
     flexDirection: 'row',

@@ -5,6 +5,8 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { creditCardService } from '../services/creditCardService';
 import { ServiceError } from '../services/errors';
+import DismissKeyboardView from '../components/DismissKeyboardView';
+import DoneAccessory, { DONE_ACCESSORY_ID } from '../components/DoneAccessory';
 import type { CreditCardsStackParamList } from '../navigation/CreditCardsNavigator';
 
 type Props = NativeStackScreenProps<CreditCardsStackParamList, 'CreditCardForm'>;
@@ -59,6 +61,7 @@ export default function CreditCardFormScreen({ route, navigation }: Props) {
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <DismissKeyboardView>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <TextInput label="Card Name" value={name} onChangeText={setName} placeholder="BDO Visa" style={styles.field} />
         <TextInput label="Bank" value={bank} onChangeText={setBank} placeholder="BDO" style={styles.field} />
@@ -68,6 +71,7 @@ export default function CreditCardFormScreen({ route, navigation }: Props) {
           value={dueDate}
           onChangeText={(text) => setDueDate(text.replace(/[^0-9]/g, ''))}
           keyboardType="number-pad"
+          inputAccessoryViewID={DONE_ACCESSORY_ID}
           placeholder="25"
           maxLength={2}
           style={styles.field}
@@ -96,6 +100,8 @@ export default function CreditCardFormScreen({ route, navigation }: Props) {
           Save
         </Button>
       </ScrollView>
+      </DismissKeyboardView>
+      <DoneAccessory />
     </KeyboardAvoidingView>
   );
 }

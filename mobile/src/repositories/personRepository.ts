@@ -98,6 +98,14 @@ export const personRepository = {
     );
   },
 
+  async paymentsForAccount(accountId: string): Promise<(DebtPaymentRow & { person_name: string })[]> {
+    const db = await getDb();
+    return db.getAllAsync(
+      `SELECT dp.*, p.name AS person_name FROM debt_payments dp JOIN people p ON p.id = dp.person_id WHERE dp.bank_account_id = ? ORDER BY dp.date DESC, dp.created_at DESC`,
+      accountId
+    );
+  },
+
   async insertPayment(input: { personId: string; bankAccountId: string; amountCents: number; date: string }): Promise<DebtPaymentRow> {
     const db = await getDb();
     const id = newId();

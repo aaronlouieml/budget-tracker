@@ -10,7 +10,15 @@ export interface Person {
   name: string;
   created_at: string;
   updated_at: string;
+  // "outstanding" is kept as an alias of owesMe for backward compatibility.
   outstanding: string;
+  owesMe: string;
+  // Nothing in this app currently records money the user owes someone else
+  // (every expense is paid BY the user, then split) - always zero for now,
+  // but kept as a real field/Net calculation so a future feature that adds
+  // that direction doesn't need a UI rework.
+  iOwe: string;
+  net: string;
 }
 
 export interface PersonExpenseShare {
@@ -47,8 +55,17 @@ export interface PersonDetail {
   payments: PersonPayment[];
 }
 
-function toPerson(row: PersonRow, outstandingCents: number): Person {
-  return { id: row.id, name: row.name, created_at: row.created_at, updated_at: row.updated_at, outstanding: fromCents(outstandingCents) };
+function toPerson(row: PersonRow, owesMeCents: number): Person {
+  return {
+    id: row.id,
+    name: row.name,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    outstanding: fromCents(owesMeCents),
+    owesMe: fromCents(owesMeCents),
+    iOwe: '0.00',
+    net: fromCents(owesMeCents),
+  };
 }
 
 export const personService = {

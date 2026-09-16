@@ -6,6 +6,8 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { bankAccountService, type AccountType } from '../services/bankAccountService';
 import { ServiceError } from '../services/errors';
 import { ACCOUNT_TYPES } from '../constants/accountOptions';
+import DismissKeyboardView from '../components/DismissKeyboardView';
+import DoneAccessory, { DONE_ACCESSORY_ID } from '../components/DoneAccessory';
 import type { BankAccountsStackParamList } from '../navigation/BankAccountsNavigator';
 
 type Props = NativeStackScreenProps<BankAccountsStackParamList, 'AccountForm'>;
@@ -58,6 +60,7 @@ export default function BankAccountFormScreen({ route, navigation }: Props) {
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <DismissKeyboardView>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <TextInput label="Account Name" value={name} onChangeText={setName} placeholder="BPI Savings" style={styles.field} />
 
@@ -77,6 +80,7 @@ export default function BankAccountFormScreen({ route, navigation }: Props) {
           value={balance}
           onChangeText={setBalance}
           keyboardType="decimal-pad"
+          inputAccessoryViewID={DONE_ACCESSORY_ID}
           left={<TextInput.Affix text="₱" />}
           style={styles.field}
         />
@@ -101,6 +105,8 @@ export default function BankAccountFormScreen({ route, navigation }: Props) {
           Save
         </Button>
       </ScrollView>
+      </DismissKeyboardView>
+      <DoneAccessory />
     </KeyboardAvoidingView>
   );
 }
