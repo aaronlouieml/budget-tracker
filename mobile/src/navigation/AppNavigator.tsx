@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { Alert, View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { IconButton, useTheme } from 'react-native-paper';
@@ -9,6 +11,7 @@ import BankAccountsNavigator from './BankAccountsNavigator';
 import PeopleNavigator from './PeopleNavigator';
 import ReportsScreen from '../screens/ReportsScreen';
 import { useAppTheme } from '../theme/ThemeContext';
+import { seedTestData } from '../utils/devSeed';
 
 export type RootTabParamList = {
   Home: undefined;
@@ -33,6 +36,19 @@ const ICONS: Record<keyof RootTabParamList, keyof typeof MaterialCommunityIcons.
 export default function AppNavigator() {
   const theme = useTheme();
   const { isDark, toggleTheme } = useAppTheme();
+  const [isSeeding, setIsSeeding] = useState(false);
+
+  async function handleSeed() {
+    setIsSeeding(true);
+    try {
+      await seedTestData();
+      Alert.alert('Test data loaded', 'Existing data was replaced with the spec’s test scenario.');
+    } catch (err) {
+      Alert.alert('Seed failed', err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setIsSeeding(false);
+    }
+  }
 
   return (
     <Tab.Navigator
@@ -42,11 +58,16 @@ export default function AppNavigator() {
         ),
         tabBarActiveTintColor: theme.colors.primary,
         headerRight: () => (
-          <IconButton
-            icon={isDark ? 'weather-sunny' : 'weather-night'}
-            onPress={toggleTheme}
-            accessibilityLabel={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-          />
+          <View style={{ flexDirection: 'row' }}>
+            {__DEV__ && (
+              <IconButton icon="database-refresh-outline" onPress={handleSeed} loading={isSeeding} accessibilityLabel="Load dev test data" />
+            )}
+            <IconButton
+              icon={isDark ? 'weather-sunny' : 'weather-night'}
+              onPress={toggleTheme}
+              accessibilityLabel={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            />
+          </View>
         ),
       })}
     >

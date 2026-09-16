@@ -3,6 +3,7 @@ import { creditCardRepository, type CreditCardRow } from '../repositories/credit
 import { bankAccountRepository } from '../repositories/bankAccountRepository';
 import { toCents, fromCents } from '../utils/money';
 import { toExpense, type Expense } from './expenseService';
+import { calculatePayWhatIOwe } from './financialMath';
 import { ServiceError } from './errors';
 
 const DUE_SOON_DAYS = 7;
@@ -21,19 +22,29 @@ export interface CreditCard {
   next_due_date: string;
   days_until_due: number;
   status: CardStatus;
+  myResponsibility: string;
+  othersOwe: string;
+  payWhatIOwe: string;
 }
 
 export interface Payment {
   id: string;
   credit_card_id: string;
+  bank_account_id: string | null;
+  bank_account_name: string | null;
   amount: string;
   date: string;
   created_at: string;
 }
 
+export interface CardTransaction extends Expense {
+  myShare: string;
+  othersOwe: string;
+}
+
 export interface CreditCardDetail {
   card: CreditCard;
-  transactions: Expense[];
+  transactions: CardTransaction[];
   payments: Payment[];
 }
 
@@ -67,11 +78,16 @@ function daysBetween(fromISO: string, toISO: string): number {
   return Math.round((new Date(toISO).getTime() - new Date(fromISO).getTime()) / (1000 * 60 * 60 * 24));
 }
 
-function toCreditCard(row: CreditCardRow, unpaidCents: number): CreditCard {
+function toCreditCard(
+  row: CreditCardRow,
+  unpaidCents: number,
+  responsibility: { myResponsibilityCents: number; othersOweCents: number }
+): CreditCard {
   const todayISO = new Date().toISOString().slice(0, 10);
   const dueDate = nextDueDate(row.due_date, new Date());
   const daysUntilDue = daysBetween(todayISO, dueDate);
   let status: CardStatus = unpaidCents <= 0 ? 'paid' : daysUntilDue <= DUE_SOON_DAYS ? 'due_soon' : 'upcoming';
+  const payWhatIOweCents = calculatePayWhatIOwe(responsibility.myResponsibilityCents, unpaidCents);
   return {
     id: row.id,
     name: row.name,
@@ -83,11 +99,22 @@ function toCreditCard(row: CreditCardRow, unpaidCents: number): CreditCard {
     next_due_date: dueDate,
     days_until_due: daysUntilDue,
     status,
+    myResponsibility: fromCents(responsibility.myResponsibilityCents),
+    othersOwe: fromCents(responsibility.othersOweCents),
+    payWhatIOwe: fromCents(payWhatIOweCents),
   };
 }
 
-function toPayment(row: { id: string; credit_card_id: string; amount_cents: number; date: string; created_at: string }): Payment {
-  return { id: row.id, credit_card_id: row.credit_card_id, amount: fromCents(row.amount_cents), date: row.date, created_at: row.created_at };
+function toPayment(row: { id: string; credit_card_id: string; bank_account_id?: string | null; amount_cents: number; date: string; created_at: string; bank_account_name?: string | null }): Payment {
+  return {
+    id: row.id,
+    credit_card_id: row.credit_card_id,
+    bank_account_id: row.bank_account_id ?? null,
+    bank_account_name: row.bank_account_name ?? null,
+    amount: fromCents(row.amount_cents),
+    date: row.date,
+    created_at: row.created_at,
+  };
 }
 
 function validateInput(input: CreditCardInput) {
@@ -101,24 +128,35 @@ function validateInput(input: CreditCardInput) {
 export const creditCardService = {
   async listCards(): Promise<CreditCard[]> {
     const [cards, totals] = await Promise.all([creditCardRepository.listAll(), creditCardRepository.outstandingTotals()]);
-    return cards.map((c) => toCreditCard(c, totals.get(c.id) ?? 0)).sort((a, b) => a.days_until_due - b.days_until_due);
+    const responsibilities = await Promise.all(cards.map((c) => creditCardRepository.responsibilityTotals(c.id)));
+    return cards
+      .map((c, i) => toCreditCard(c, totals.get(c.id) ?? 0, responsibilities[i]))
+      .sort((a, b) => a.days_until_due - b.days_until_due);
   },
 
   async createCard(input: CreditCardInput): Promise<CreditCard> {
     validateInput(input);
     const row = await creditCardRepository.insert({ name: input.name.trim(), bank: input.bank.trim(), dueDate: input.dueDate });
-    return toCreditCard(row, 0);
+    return toCreditCard(row, 0, { myResponsibilityCents: 0, othersOweCents: 0 });
   },
 
   async fetchCard(id: string): Promise<CreditCardDetail> {
     const card = await creditCardRepository.findById(id);
     if (!card) throw new ServiceError(['Credit card not found'], 404);
-    const [transactions, payments] = await Promise.all([creditCardRepository.transactionsForCard(id), creditCardRepository.paymentsForCard(id)]);
+    const [transactions, payments, shareTotals, responsibility] = await Promise.all([
+      creditCardRepository.transactionsForCard(id),
+      creditCardRepository.paymentsForCard(id),
+      creditCardRepository.shareTotalsForCard(id),
+      creditCardRepository.responsibilityTotals(id),
+    ]);
     const totalExpenses = transactions.reduce((sum: number, t: any) => sum + t.amount_cents, 0);
     const totalPayments = payments.reduce((sum, p) => sum + p.amount_cents, 0);
     return {
-      card: toCreditCard(card, totalExpenses - totalPayments),
-      transactions: transactions.map(toExpense),
+      card: toCreditCard(card, totalExpenses - totalPayments, responsibility),
+      transactions: transactions.map((t: any) => {
+        const sharesTotal = shareTotals.get(t.id) ?? 0;
+        return { ...toExpense(t), myShare: fromCents(t.amount_cents - sharesTotal), othersOwe: fromCents(sharesTotal) };
+      }),
       payments: payments.map(toPayment),
     };
   },
@@ -127,8 +165,11 @@ export const creditCardService = {
     validateInput(input);
     const row = await creditCardRepository.update(id, { name: input.name.trim(), bank: input.bank.trim(), dueDate: input.dueDate });
     if (!row) throw new ServiceError(['Credit card not found'], 404);
-    const outstanding = await creditCardRepository.outstandingForCard(id);
-    return toCreditCard(row, outstanding);
+    const [outstanding, responsibility] = await Promise.all([
+      creditCardRepository.outstandingForCard(id),
+      creditCardRepository.responsibilityTotals(id),
+    ]);
+    return toCreditCard(row, outstanding, responsibility);
   },
 
   async deleteCard(id: string): Promise<void> {
@@ -185,8 +226,8 @@ export const creditCardService = {
     let payment: Payment | null = null;
     let updatedReservation: { id: string; amount: string; status: string } | null = null;
     await db.withTransactionAsync(async () => {
-      const paymentRow = await creditCardRepository.insertPayment({ creditCardId: cardId, amountCents, date: input.date });
-      payment = toPayment(paymentRow);
+      const paymentRow = await creditCardRepository.insertPayment({ creditCardId: cardId, bankAccountId: input.bankAccountId, amountCents, date: input.date });
+      payment = toPayment({ ...paymentRow, bank_account_name: account.name });
 
       await bankAccountRepository.adjustBalance(input.bankAccountId, -amountCents);
 

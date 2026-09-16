@@ -13,6 +13,8 @@ import { CATEGORIES, PAYMENT_METHODS } from '../constants/expenseOptions';
 import { suggestCategory } from '../constants/categorySuggestions';
 import { formatCurrency, todayISODate } from '../utils/format';
 import DateField from '../components/DateField';
+import DismissKeyboardView from '../components/DismissKeyboardView';
+import DoneAccessory, { DONE_ACCESSORY_ID } from '../components/DoneAccessory';
 import type { ExpensesStackParamList } from '../navigation/ExpensesNavigator';
 
 type Props = NativeStackScreenProps<ExpensesStackParamList, 'ExpenseForm'>;
@@ -222,6 +224,7 @@ export default function ExpenseFormScreen({ route, navigation }: Props) {
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <DismissKeyboardView>
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       {scanned?.ocrFailed && (
         <Text
@@ -240,6 +243,7 @@ export default function ExpenseFormScreen({ route, navigation }: Props) {
         value={amount}
         onChangeText={setAmount}
         keyboardType="decimal-pad"
+        inputAccessoryViewID={DONE_ACCESSORY_ID}
         left={<TextInput.Affix text="₱" />}
         style={styles.field}
       />
@@ -410,6 +414,7 @@ export default function ExpenseFormScreen({ route, navigation }: Props) {
         </Button>
       )}
     </ScrollView>
+    </DismissKeyboardView>
 
     <Portal>
       <Dialog visible={isSplitDialogVisible} onDismiss={closeSplitDialog}>
@@ -430,6 +435,7 @@ export default function ExpenseFormScreen({ route, navigation }: Props) {
             value={myShareText}
             onChangeText={setMyShareText}
             keyboardType="decimal-pad"
+            inputAccessoryViewID={DONE_ACCESSORY_ID}
             left={<TextInput.Affix text="₱" />}
             style={styles.dialogField}
           />
@@ -441,6 +447,7 @@ export default function ExpenseFormScreen({ route, navigation }: Props) {
                 value={row.amountText}
                 onChangeText={(text) => setSplitRows((rows) => rows.map((r) => (r.personId === row.personId ? { ...r, amountText: text } : r)))}
                 keyboardType="decimal-pad"
+                inputAccessoryViewID={DONE_ACCESSORY_ID}
                 left={<TextInput.Affix text="₱" />}
                 style={styles.splitRowInput}
               />
@@ -501,6 +508,7 @@ export default function ExpenseFormScreen({ route, navigation }: Props) {
         </Dialog.Actions>
       </Dialog>
     </Portal>
+    <DoneAccessory />
     </KeyboardAvoidingView>
   );
 }

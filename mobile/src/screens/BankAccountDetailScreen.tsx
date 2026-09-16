@@ -4,18 +4,36 @@ import { ActivityIndicator, Button, Dialog, Divider, IconButton, List, Menu, Por
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import { bankAccountService, type BankAccountDetail, type Reservation, type ReservationPurpose } from '../services/bankAccountService';
+import {
+  bankAccountService,
+  type ActivityItem,
+  type BankAccount,
+  type BankAccountDetail,
+  type Reservation,
+  type ReservationPurpose,
+} from '../services/bankAccountService';
 import { creditCardService, type CreditCard } from '../services/creditCardService';
+import { transferService } from '../services/transferService';
 import { ServiceError } from '../services/errors';
 import { ACCOUNT_TYPES, RESERVATION_PURPOSES } from '../constants/accountOptions';
-import { formatCurrency, formatDate } from '../utils/format';
+import { formatCurrency, formatDate, todayISODate } from '../utils/format';
 import { confirmDestructive } from '../utils/confirm';
+import DismissKeyboardView from '../components/DismissKeyboardView';
+import DoneAccessory, { DONE_ACCESSORY_ID } from '../components/DoneAccessory';
 import type { BankAccountsStackParamList } from '../navigation/BankAccountsNavigator';
 
 type Props = NativeStackScreenProps<BankAccountsStackParamList, 'AccountDetail'>;
 
 const TYPE_LABELS = Object.fromEntries(ACCOUNT_TYPES.map((t) => [t.value, t.label]));
 const PURPOSE_LABELS = Object.fromEntries(RESERVATION_PURPOSES.map((p) => [p.value, p.label]));
+
+const ACTIVITY_ICONS: Record<ActivityItem['type'], string> = {
+  expense: 'cart-outline',
+  credit_card_payment: 'credit-card-outline',
+  transfer: 'bank-transfer',
+  incoming: 'cash-plus',
+  reimbursement: 'account-cash-outline',
+};
 
 export default function BankAccountDetailScreen({ route, navigation }: Props) {
   const theme = useTheme();
@@ -42,11 +60,23 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
   const [incomingError, setIncomingError] = useState<string | null>(null);
   const [isSubmittingIncoming, setIsSubmittingIncoming] = useState(false);
 
+  const [activity, setActivity] = useState<ActivityItem[]>([]);
+
+  const [accounts, setAccounts] = useState<BankAccount[]>([]);
+  const [isTransferDialogVisible, setTransferDialogVisible] = useState(false);
+  const [transferAmount, setTransferAmount] = useState('');
+  const [transferToId, setTransferToId] = useState<string | null>(null);
+  const [transferNote, setTransferNote] = useState('');
+  const [isTransferAccountMenuVisible, setTransferAccountMenuVisible] = useState(false);
+  const [transferError, setTransferError] = useState<string | null>(null);
+  const [isSubmittingTransfer, setIsSubmittingTransfer] = useState(false);
+
   const loadDetail = useCallback(async () => {
     setError(null);
     try {
-      const data = await bankAccountService.fetchAccount(accountId);
+      const [data, activityData] = await Promise.all([bankAccountService.fetchAccount(accountId), bankAccountService.getActivity(accountId)]);
       setDetail(data);
+      setActivity(activityData);
     } catch (err) {
       setError(err instanceof ServiceError ? err.message : 'Unable to load account.');
     } finally {
@@ -63,7 +93,13 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
         .catch(() => {
           // Non-critical: the credit card picker just falls back to "no cards" state.
         });
-    }, [loadDetail])
+      bankAccountService
+        .listAccounts()
+        .then((all) => setAccounts(all.filter((a) => a.id !== accountId)))
+        .catch(() => {
+          // Non-critical: the transfer destination picker just falls back to "no accounts" state.
+        });
+    }, [loadDetail, accountId])
   );
 
   function handleDeleteAccount() {
@@ -196,6 +232,44 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
     });
   }
 
+  function openTransferDialog() {
+    setTransferAmount('');
+    setTransferToId(null);
+    setTransferNote('');
+    setTransferError(null);
+    setTransferDialogVisible(true);
+  }
+
+  async function handleCreateTransfer() {
+    const amountValue = Number(transferAmount);
+    if (!transferAmount || Number.isNaN(amountValue) || amountValue <= 0) {
+      setTransferError('Enter a valid amount');
+      return;
+    }
+    if (!transferToId) {
+      setTransferError('Select a destination account');
+      return;
+    }
+
+    setIsSubmittingTransfer(true);
+    setTransferError(null);
+    try {
+      await transferService.createTransfer({
+        fromAccountId: accountId,
+        toAccountId: transferToId,
+        amount: amountValue,
+        note: transferNote.trim() || null,
+        date: todayISODate(),
+      });
+      setTransferDialogVisible(false);
+      await loadDetail();
+    } catch (err) {
+      setTransferError(err instanceof ServiceError ? err.message : 'Unable to transfer.');
+    } finally {
+      setIsSubmittingTransfer(false);
+    }
+  }
+
   if (isLoading) {
     return (
       <View style={styles.centered}>
@@ -224,6 +298,7 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
 
   return (
     <>
+      <DismissKeyboardView>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.summary}>
           <Text variant="bodyMedium" style={styles.type}>
@@ -255,6 +330,9 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
             </Button>
             <Button mode="outlined" onPress={openIncomingDialog} icon="cash-plus" style={styles.actionButton}>
               Incoming
+            </Button>
+            <Button mode="outlined" onPress={openTransferDialog} icon="bank-transfer" style={styles.actionButton} disabled={accounts.length === 0}>
+              Transfer
             </Button>
           </View>
         </View>
@@ -323,7 +401,37 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
             </View>
           ))
         )}
+
+        <Text variant="titleMedium" style={styles.sectionTitle}>
+          Recent Activity
+        </Text>
+        {activity.length === 0 ? (
+          <Text variant="bodyMedium" style={styles.emptyText}>
+            No activity yet.
+          </Text>
+        ) : (
+          activity.map((item, index) => (
+            <View key={`${item.type}-${item.id}`}>
+              <List.Item
+                title={item.label}
+                description={`${item.detail ? item.detail + ' · ' : ''}${formatDate(item.date)}`}
+                left={(props) => <List.Icon {...props} icon={ACTIVITY_ICONS[item.type]} />}
+                right={() => (
+                  <Text
+                    variant="titleMedium"
+                    style={[styles.activityAmount, { color: item.direction === 'in' ? theme.colors.primary : theme.colors.onSurface }]}
+                  >
+                    {item.direction === 'in' ? '+' : '-'}
+                    {formatCurrency(item.amount)}
+                  </Text>
+                )}
+              />
+              {index < activity.length - 1 && <Divider />}
+            </View>
+          ))
+        )}
       </ScrollView>
+      </DismissKeyboardView>
 
       <Portal>
         <Dialog visible={isReserveDialogVisible} onDismiss={() => setReserveDialogVisible(false)}>
@@ -342,6 +450,7 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
               value={reserveAmount}
               onChangeText={setReserveAmount}
               keyboardType="decimal-pad"
+              inputAccessoryViewID={DONE_ACCESSORY_ID}
               left={<TextInput.Affix text="₱" />}
               style={styles.dialogField}
             />
@@ -421,6 +530,7 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
               value={incomingAmount}
               onChangeText={setIncomingAmount}
               keyboardType="decimal-pad"
+              inputAccessoryViewID={DONE_ACCESSORY_ID}
               left={<TextInput.Affix text="₱" />}
               style={styles.dialogField}
             />
@@ -446,7 +556,79 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
             </Button>
           </Dialog.Actions>
         </Dialog>
+
+        <Dialog visible={isTransferDialogVisible} onDismiss={() => setTransferDialogVisible(false)}>
+          <Dialog.Title>Transfer Money</Dialog.Title>
+          <Dialog.Content>
+            <Text variant="bodySmall" style={styles.mutedLabel}>
+              From {account.name} · Available {formatCurrency(account.available)}
+            </Text>
+
+            <TextInput
+              label="Amount"
+              value={transferAmount}
+              onChangeText={setTransferAmount}
+              keyboardType="decimal-pad"
+              inputAccessoryViewID={DONE_ACCESSORY_ID}
+              left={<TextInput.Affix text="₱" />}
+              style={styles.dialogField}
+            />
+
+            <Text variant="labelLarge" style={styles.dialogLabel}>
+              To
+            </Text>
+            {accounts.length === 0 ? (
+              <Text variant="bodySmall" style={styles.mutedLabel}>
+                No other accounts yet.
+              </Text>
+            ) : (
+              <Menu
+                visible={isTransferAccountMenuVisible}
+                onDismiss={() => setTransferAccountMenuVisible(false)}
+                anchor={
+                  <Button mode="outlined" onPress={() => setTransferAccountMenuVisible(true)} icon="bank-outline">
+                    {accounts.find((a) => a.id === transferToId)?.name ?? 'Select an account'}
+                  </Button>
+                }
+              >
+                {accounts.map((a) => (
+                  <Menu.Item
+                    key={a.id}
+                    title={a.name}
+                    onPress={() => {
+                      setTransferToId(a.id);
+                      setTransferAccountMenuVisible(false);
+                    }}
+                  />
+                ))}
+              </Menu>
+            )}
+
+            <TextInput
+              label="Note (optional)"
+              value={transferNote}
+              onChangeText={setTransferNote}
+              placeholder="Rent money"
+              style={[styles.dialogField, styles.transferNoteField]}
+            />
+
+            {transferError && (
+              <Text style={[styles.error, { color: theme.colors.error }]} variant="bodySmall">
+                {transferError}
+              </Text>
+            )}
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setTransferDialogVisible(false)} disabled={isSubmittingTransfer}>
+              Cancel
+            </Button>
+            <Button onPress={handleCreateTransfer} loading={isSubmittingTransfer} disabled={isSubmittingTransfer}>
+              Transfer
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
       </Portal>
+      <DoneAccessory />
     </>
   );
 }
@@ -538,5 +720,11 @@ const styles = StyleSheet.create({
   },
   retryButton: {
     marginTop: 4,
+  },
+  activityAmount: {
+    alignSelf: 'center',
+  },
+  transferNoteField: {
+    marginTop: 12,
   },
 });

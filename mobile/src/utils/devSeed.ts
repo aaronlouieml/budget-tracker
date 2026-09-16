@@ -1,0 +1,54 @@
+import { getDb } from '../database/sqlite';
+import { bankAccountService } from '../services/bankAccountService';
+import { creditCardService } from '../services/creditCardService';
+import { personService } from '../services/personService';
+import { expenseService } from '../services/expenseService';
+import { todayISODate } from './format';
+
+const TABLES = ['transfers', 'debt_payments', 'expense_shares', 'payments', 'reservations', 'incoming_money', 'expenses', 'people', 'credit_cards', 'bank_accounts'];
+
+async function resetAllData(): Promise<void> {
+  const db = await getDb();
+  await db.withTransactionAsync(async () => {
+    for (const table of TABLES) {
+      await db.execAsync(`DELETE FROM ${table}`);
+    }
+  });
+}
+
+// Dev-only helper (see the __DEV__-gated button in AppNavigator) that walks
+// through the exact scenario from the feature spec's final test section,
+// using the real services - so it's a faithful exercise of the whole
+// account/credit-card/shared-expense/transfer flow, not just inserted rows.
+export async function seedTestData(): Promise<void> {
+  await resetAllData();
+  const today = todayISODate();
+
+  const account = await bankAccountService.createAccount({ name: 'BPI Savings', type: 'savings', balance: 50_000 });
+  const card = await creditCardService.createCard({ name: 'BPI Mastercard', bank: 'BPI', dueDate: 25 });
+  await bankAccountService.createReservation(account.id, { name: 'Emergency Fund', amount: 20_000, purpose: 'other', creditCardId: null });
+
+  const mau = await personService.createPerson('Mau');
+
+  await expenseService.createExpense({
+    amount: 2_000,
+    category: 'Food',
+    date: today,
+    merchant: 'Restaurant',
+    payment_method: 'credit_card',
+    credit_card_id: card.id,
+    bank_account_id: null,
+    receipt_image: null,
+    shares: [{ personId: mau.id, amount: 1_000 }],
+  });
+
+  const cardDetail = await creditCardService.fetchCard(card.id);
+  await creditCardService.payFromAccount(card.id, {
+    amount: Number(cardDetail.card.payWhatIOwe),
+    bankAccountId: account.id,
+    source: 'available',
+    date: today,
+  });
+
+  await personService.recordPayment(mau.id, { amount: 1_000, bankAccountId: account.id, date: today });
+}

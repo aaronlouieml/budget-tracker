@@ -1,5 +1,9 @@
 import { getDb } from '../database/sqlite';
 import { bankAccountRepository, type ReservationRow } from '../repositories/bankAccountRepository';
+import { expenseRepository } from '../repositories/expenseRepository';
+import { creditCardRepository } from '../repositories/creditCardRepository';
+import { personRepository } from '../repositories/personRepository';
+import { transferRepository } from '../repositories/transferRepository';
 import { toCents, fromCents } from '../utils/money';
 import { ServiceError } from './errors';
 
@@ -47,6 +51,19 @@ export interface BankAccountDetail {
   incoming: IncomingMoney[];
   incomingTotal: string;
   potentialAvailable: string;
+}
+
+export type ActivityType = 'expense' | 'credit_card_payment' | 'transfer' | 'incoming' | 'reimbursement';
+
+export interface ActivityItem {
+  id: string;
+  type: ActivityType;
+  label: string;
+  detail: string | null;
+  amount: string;
+  direction: 'in' | 'out';
+  date: string;
+  created_at: string;
 }
 
 export interface AccountInput {
@@ -142,6 +159,77 @@ export const bankAccountService = {
       incomingTotal: fromCents(incomingTotalCents),
       potentialAvailable: fromCents(account.balance_cents - reservedCents + incomingTotalCents),
     };
+  },
+
+  // "Why did my balance change?" - merges every source of real money movement
+  // for this account. Reservations are deliberately excluded: creating one
+  // doesn't move any money, so it has no place in an activity/history view.
+  async getActivity(accountId: string): Promise<ActivityItem[]> {
+    const account = await bankAccountRepository.findById(accountId);
+    if (!account) throw new ServiceError(['Bank account not found'], 404);
+
+    const [expenses, payments, incoming, reimbursements, transfers] = await Promise.all([
+      expenseRepository.forAccount(accountId),
+      creditCardRepository.paymentsForAccount(accountId),
+      bankAccountRepository.incomingForAccount(accountId),
+      personRepository.paymentsForAccount(accountId),
+      transferRepository.forAccount(accountId),
+    ]);
+
+    const items: ActivityItem[] = [
+      ...expenses.map((e) => ({
+        id: e.id,
+        type: 'expense' as const,
+        label: e.category,
+        detail: e.merchant,
+        amount: fromCents(e.amount_cents),
+        direction: 'out' as const,
+        date: e.date,
+        created_at: e.created_at,
+      })),
+      ...payments.map((p) => ({
+        id: p.id,
+        type: 'credit_card_payment' as const,
+        label: 'Credit Card Payment',
+        detail: p.credit_card_name,
+        amount: fromCents(p.amount_cents),
+        direction: 'out' as const,
+        date: p.date,
+        created_at: p.created_at,
+      })),
+      ...incoming.map((i) => ({
+        id: i.id,
+        type: 'incoming' as const,
+        label: 'Incoming Money',
+        detail: i.description,
+        amount: fromCents(i.amount_cents),
+        direction: 'in' as const,
+        date: i.created_at.slice(0, 10),
+        created_at: i.created_at,
+      })),
+      ...reimbursements.map((r) => ({
+        id: r.id,
+        type: 'reimbursement' as const,
+        label: `${r.person_name} Reimbursement`,
+        detail: null,
+        amount: fromCents(r.amount_cents),
+        direction: 'in' as const,
+        date: r.date,
+        created_at: r.created_at,
+      })),
+      ...transfers.map((t) => ({
+        id: t.id,
+        type: 'transfer' as const,
+        label: t.from_account_id === accountId ? `Transfer to ${t.to_account_name}` : `Transfer from ${t.from_account_name}`,
+        detail: t.note,
+        amount: fromCents(t.amount_cents),
+        direction: (t.from_account_id === accountId ? 'out' : 'in') as 'out' | 'in',
+        date: t.date,
+        created_at: t.created_at,
+      })),
+    ];
+
+    return items.sort((a, b) => (a.date === b.date ? b.created_at.localeCompare(a.created_at) : b.date.localeCompare(a.date)));
   },
 
   async updateAccount(id: string, input: AccountInput): Promise<BankAccount> {
