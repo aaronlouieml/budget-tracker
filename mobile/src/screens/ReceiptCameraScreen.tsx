@@ -62,7 +62,7 @@ export default function ReceiptCameraScreen({ navigation }: Props) {
           Camera access needed
         </Text>
         <Text variant="bodyMedium" style={styles.permissionBody}>
-          Budget Tracker needs camera access to scan receipts.
+          Pocketcakes needs camera access to scan receipts.
         </Text>
         {permission.canAskAgain ? (
           <Button mode="contained" onPress={requestPermission} style={styles.permissionButton}>

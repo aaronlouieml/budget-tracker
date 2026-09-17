@@ -1,4 +1,5 @@
 import type { CardStatus } from '../services/creditCardService';
+import type { PillTone } from '../components/StatusPill';
 
 export const STATUS_LABELS: Record<CardStatus, string> = {
   paid: 'Paid',
@@ -6,8 +7,10 @@ export const STATUS_LABELS: Record<CardStatus, string> = {
   upcoming: 'Upcoming',
 };
 
-export const STATUS_COLORS: Record<CardStatus, string> = {
-  paid: '#2E7D32',
-  due_soon: '#C62828',
-  upcoming: '#6750A4',
+// Maps each credit card status to a StatusPill tone, so a "due soon" badge
+// always matches the same red used for negative amounts elsewhere, etc.
+export const STATUS_TONE: Record<CardStatus, PillTone> = {
+  paid: 'positive',
+  due_soon: 'negative',
+  upcoming: 'warning',
 };

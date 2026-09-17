@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
-import { Button, HelperText, Text, TextInput, useTheme } from 'react-native-paper';
+import { Button, HelperText, Text, useTheme } from 'react-native-paper';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { creditCardService } from '../services/creditCardService';
 import { ServiceError } from '../services/errors';
 import DismissKeyboardView from '../components/DismissKeyboardView';
 import DoneAccessory, { DONE_ACCESSORY_ID } from '../components/DoneAccessory';
+import AppTextInput from '../components/AppTextInput';
+import { spacing, screenPadding } from '../theme/spacing';
+import { radii } from '../theme/radii';
 import type { AccountsStackParamList } from '../navigation/AccountsNavigator';
 
 type Props = NativeStackScreenProps<AccountsStackParamList, 'CreditCardForm'>;
@@ -63,11 +66,11 @@ export default function CreditCardFormScreen({ route, navigation }: Props) {
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <DismissKeyboardView>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <TextInput label="Card Name" value={name} onChangeText={setName} placeholder="BDO Visa" style={styles.field} />
-        <TextInput label="Bank" value={bank} onChangeText={setBank} placeholder="BDO" style={styles.field} />
+      <ScrollView style={{ backgroundColor: theme.colors.background }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <AppTextInput label="Card Name" value={name} onChangeText={setName} placeholder="BDO Visa" style={styles.field} />
+        <AppTextInput label="Bank" value={bank} onChangeText={setBank} placeholder="BDO" style={styles.field} />
 
-        <TextInput
+        <AppTextInput
           label="Due Date (day of month)"
           value={dueDate}
           onChangeText={(text) => setDueDate(text.replace(/[^0-9]/g, ''))}
@@ -83,14 +86,14 @@ export default function CreditCardFormScreen({ route, navigation }: Props) {
 
         {!isEditing && (
           <>
-            <TextInput
+            <AppTextInput
               label="Current Outstanding (optional)"
               value={openingBalance}
               onChangeText={setOpeningBalance}
               keyboardType="decimal-pad"
               inputAccessoryViewID={DONE_ACCESSORY_ID}
               placeholder="0.00"
-              left={<TextInput.Affix text="₱" />}
+              left={<AppTextInput.Affix text="₱" />}
               style={styles.field}
             />
             <HelperText type="info" visible style={styles.helper}>
@@ -115,7 +118,7 @@ export default function CreditCardFormScreen({ route, navigation }: Props) {
           </Text>
         )}
 
-        <Button mode="contained" onPress={handleSave} loading={isSubmitting} disabled={isSubmitting} style={styles.saveButton}>
+        <Button mode="contained" onPress={handleSave} loading={isSubmitting} disabled={isSubmitting} style={styles.saveButton} contentStyle={styles.saveButtonContent}>
           Save
         </Button>
       </ScrollView>
@@ -130,19 +133,24 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
+    paddingHorizontal: screenPadding,
+    paddingTop: spacing.base,
   },
   field: {
-    marginBottom: 4,
+    marginBottom: spacing.xs,
   },
   helper: {
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   error: {
-    marginBottom: 4,
+    marginBottom: spacing.xs,
   },
   saveButton: {
-    marginTop: 8,
-    marginBottom: 32,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xl,
+    borderRadius: radii.button,
+  },
+  saveButtonContent: {
+    height: 48,
   },
 });

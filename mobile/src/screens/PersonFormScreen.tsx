@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
-import { Button, Text, TextInput, useTheme } from 'react-native-paper';
+import { Button, Text, useTheme } from 'react-native-paper';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { personService } from '../services/personService';
 import { ServiceError } from '../services/errors';
 import DismissKeyboardView from '../components/DismissKeyboardView';
+import AppTextInput from '../components/AppTextInput';
+import { spacing, screenPadding } from '../theme/spacing';
+import { radii } from '../theme/radii';
 import type { PeopleStackParamList } from '../navigation/PeopleNavigator';
 
 type Props = NativeStackScreenProps<PeopleStackParamList, 'PersonForm'>;
@@ -47,17 +50,17 @@ export default function PersonFormScreen({ route, navigation }: Props) {
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <DismissKeyboardView>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <TextInput label="Name" value={name} onChangeText={setName} placeholder="Mau" style={styles.field} />
+      <ScrollView style={{ backgroundColor: theme.colors.background }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <AppTextInput label="Name" value={name} onChangeText={setName} placeholder="Mau" style={styles.field} />
 
         {!isEditing && (
-          <TextInput
+          <AppTextInput
             label="Existing Balance Owed (optional)"
             value={openingOwed}
             onChangeText={setOpeningOwed}
             keyboardType="decimal-pad"
             placeholder="0.00"
-            left={<TextInput.Affix text="₱" />}
+            left={<AppTextInput.Affix text="₱" />}
             style={styles.field}
           />
         )}
@@ -73,7 +76,7 @@ export default function PersonFormScreen({ route, navigation }: Props) {
           </Text>
         )}
 
-        <Button mode="contained" onPress={handleSave} loading={isSubmitting} disabled={isSubmitting} style={styles.saveButton}>
+        <Button mode="contained" onPress={handleSave} loading={isSubmitting} disabled={isSubmitting} style={styles.saveButton} contentStyle={styles.saveButtonContent}>
           Save
         </Button>
       </ScrollView>
@@ -87,15 +90,20 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
+    paddingHorizontal: screenPadding,
+    paddingTop: spacing.base,
   },
   field: {
-    marginBottom: 16,
+    marginBottom: spacing.base,
   },
   error: {
-    marginBottom: 4,
+    marginBottom: spacing.xs,
   },
   saveButton: {
-    marginTop: 8,
+    marginTop: spacing.sm,
+    borderRadius: radii.button,
+  },
+  saveButtonContent: {
+    height: 48,
   },
 });

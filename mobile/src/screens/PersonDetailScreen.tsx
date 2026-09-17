@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { ActivityIndicator, Button, Dialog, Divider, IconButton, List, Menu, Portal, Text, TextInput, useTheme } from 'react-native-paper';
+import { ActivityIndicator, Avatar, Button, Dialog, Divider, IconButton, Menu, Portal, Text, useTheme } from 'react-native-paper';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -12,6 +12,13 @@ import { formatCurrency, formatDate, todayISODate } from '../utils/format';
 import { confirmDestructive } from '../utils/confirm';
 import DismissKeyboardView from '../components/DismissKeyboardView';
 import DoneAccessory, { DONE_ACCESSORY_ID } from '../components/DoneAccessory';
+import AppTextInput from '../components/AppTextInput';
+import SectionHeader from '../components/SectionHeader';
+import AmountText from '../components/AmountText';
+import EmptyState from '../components/EmptyState';
+import { spacing, screenPadding } from '../theme/spacing';
+import { radii } from '../theme/radii';
+import { tabularNumberStyle } from '../theme/typography';
 import type { PeopleStackParamList } from '../navigation/PeopleNavigator';
 
 type Props = NativeStackScreenProps<PeopleStackParamList, 'PersonDetail'>;
@@ -117,7 +124,7 @@ export default function PersonDetailScreen({ route, navigation }: Props) {
 
   if (isLoading) {
     return (
-      <View style={styles.centered}>
+      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
         <ActivityIndicator size="large" />
       </View>
     );
@@ -125,7 +132,7 @@ export default function PersonDetailScreen({ route, navigation }: Props) {
 
   if (error || !detail) {
     return (
-      <View style={styles.centered}>
+      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
         <Text variant="bodyMedium" style={[styles.errorText, { color: theme.colors.error }]}>
           {error ?? 'Unable to load person.'}
         </Text>
@@ -142,25 +149,28 @@ export default function PersonDetailScreen({ route, navigation }: Props) {
   return (
     <>
       <DismissKeyboardView>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView style={{ backgroundColor: theme.colors.background }} contentContainerStyle={styles.content}>
         <View style={styles.summary}>
-          <Text variant="displaySmall">{formatCurrency(outstanding)}</Text>
-          <Text variant="bodyMedium" style={styles.mutedLabel}>
+          <Avatar.Text size={56} label={person.name.slice(0, 1).toUpperCase()} style={{ backgroundColor: theme.colors.primaryContainer }} color={theme.colors.onPrimaryContainer} />
+          <Text variant="displaySmall" style={[tabularNumberStyle, styles.netAmount]}>
+            {formatCurrency(outstanding)}
+          </Text>
+          <Text variant="bodyMedium" style={[styles.mutedLabel, { color: theme.colors.onSurfaceVariant }]}>
             Net
           </Text>
 
           <View style={styles.summaryRow}>
             <View style={styles.summaryCol}>
-              <Text variant="bodySmall" style={styles.mutedLabel}>
-                Owes Me
+              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                Owes You
               </Text>
-              <Text variant="titleMedium">{formatCurrency(person.owesMe)}</Text>
+              <AmountText value={formatCurrency(person.owesMe)} variant="titleMedium" tone="positive" />
             </View>
             <View style={styles.summaryCol}>
-              <Text variant="bodySmall" style={styles.mutedLabel}>
-                I Owe
+              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                You Owe
               </Text>
-              <Text variant="titleMedium">{formatCurrency(person.iOwe)}</Text>
+              <AmountText value={formatCurrency(person.iOwe)} variant="titleMedium" />
             </View>
           </View>
 
@@ -171,54 +181,59 @@ export default function PersonDetailScreen({ route, navigation }: Props) {
           )}
         </View>
 
-        <Text variant="titleMedium" style={styles.sectionTitle}>
-          Transactions
-        </Text>
-        {shares.length === 0 ? (
-          <Text variant="bodyMedium" style={styles.emptyText}>
-            No shared expenses yet.
-          </Text>
-        ) : (
-          shares.map((share, index) => (
-            <View key={share.id}>
-              <List.Item
-                title={share.expense.merchant || share.expense.category}
-                description={`${formatDate(share.expense.date)} · Total ${formatCurrency(share.expense.total)}${
-                  share.expense.payment_method ? ' · ' + (PAYMENT_METHOD_LABELS[share.expense.payment_method] ?? share.expense.payment_method) : ''
-                }`}
-                right={() => (
-                  <View style={styles.shareRight}>
-                    <Text variant="titleMedium">{formatCurrency(share.amount)}</Text>
-                    <Text variant="bodySmall" style={share.status === 'paid' ? styles.paidLabel : styles.owesLabel}>
-                      {share.status === 'paid' ? 'Paid ✓' : `${formatCurrency(share.remaining)} remaining`}
+        <View style={styles.section}>
+          <SectionHeader title="Shared Expenses" />
+          {shares.length === 0 ? (
+            <EmptyState icon="receipt-text-outline" title="No shared expenses yet" description="Split an expense with this person to see it here." compact />
+          ) : (
+            shares.map((share, index) => (
+              <View key={share.id}>
+                <View style={styles.listRow}>
+                  <View style={styles.listRowText}>
+                    <Text variant="bodyLarge" numberOfLines={1} style={{ color: theme.colors.onSurface }}>
+                      {share.expense.merchant || share.expense.category}
+                    </Text>
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }} numberOfLines={1}>
+                      {formatDate(share.expense.date)} · Total {formatCurrency(share.expense.total)}
+                      {share.expense.payment_method ? ' · ' + (PAYMENT_METHOD_LABELS[share.expense.payment_method] ?? share.expense.payment_method) : ''}
                     </Text>
                   </View>
-                )}
-              />
-              {index < shares.length - 1 && <Divider />}
-            </View>
-          ))
-        )}
+                  <View style={styles.shareRight}>
+                    <AmountText value={formatCurrency(share.amount)} variant="titleSmall" />
+                    <Text variant="bodySmall" style={{ color: share.status === 'paid' ? theme.colors.tertiary : theme.colors.onSurfaceVariant }}>
+                      {share.status === 'paid' ? 'Paid ✓' : `${formatCurrency(share.remaining)} left`}
+                    </Text>
+                  </View>
+                </View>
+                {index < shares.length - 1 && <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />}
+              </View>
+            ))
+          )}
+        </View>
 
-        <Text variant="titleMedium" style={styles.sectionTitle}>
-          Payment History
-        </Text>
-        {payments.length === 0 ? (
-          <Text variant="bodyMedium" style={styles.emptyText}>
-            No payments recorded yet.
-          </Text>
-        ) : (
-          payments.map((payment, index) => (
-            <View key={payment.id}>
-              <List.Item
-                title={formatCurrency(payment.amount)}
-                description={`${formatDate(payment.date)} · Received via ${payment.bank_account_name ?? 'an account'}`}
-                left={(props) => <List.Icon {...props} icon="check-circle-outline" />}
-              />
-              {index < payments.length - 1 && <Divider />}
-            </View>
-          ))
-        )}
+        <View style={styles.section}>
+          <SectionHeader title="Payment History" />
+          {payments.length === 0 ? (
+            <EmptyState icon="check-circle-outline" title="No payments yet" description="Payments this person makes toward what they owe show up here." compact />
+          ) : (
+            payments.map((payment, index) => (
+              <View key={payment.id}>
+                <View style={styles.listRow}>
+                  <View style={styles.listRowText}>
+                    <Text variant="bodyLarge" style={{ color: theme.colors.onSurface }}>
+                      Payment received
+                    </Text>
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                      {formatDate(payment.date)} · via {payment.bank_account_name ?? 'an account'}
+                    </Text>
+                  </View>
+                  <AmountText value={formatCurrency(payment.amount)} variant="titleSmall" tone="positive" />
+                </View>
+                {index < payments.length - 1 && <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />}
+              </View>
+            ))
+          )}
+        </View>
       </ScrollView>
       </DismissKeyboardView>
 
@@ -226,13 +241,13 @@ export default function PersonDetailScreen({ route, navigation }: Props) {
         <Dialog visible={isPayDialogVisible} onDismiss={() => setPayDialogVisible(false)}>
           <Dialog.Title>{detail.person.name} Pays You</Dialog.Title>
           <Dialog.Content>
-            <TextInput
+            <AppTextInput
               label="Amount"
               value={payAmount}
               onChangeText={setPayAmount}
               keyboardType="decimal-pad"
               inputAccessoryViewID={DONE_ACCESSORY_ID}
-              left={<TextInput.Affix text="₱" />}
+              left={<AppTextInput.Affix text="₱" />}
               style={styles.dialogField}
             />
 
@@ -240,7 +255,7 @@ export default function PersonDetailScreen({ route, navigation }: Props) {
               Received Via
             </Text>
             {accounts.length === 0 ? (
-              <Text variant="bodySmall" style={styles.mutedLabel}>
+              <Text variant="bodySmall" style={[styles.mutedLabel, { color: theme.colors.onSurfaceVariant }]}>
                 No accounts yet. Add one from the Accounts tab.
               </Text>
             ) : (
@@ -289,68 +304,74 @@ export default function PersonDetailScreen({ route, navigation }: Props) {
 
 const styles = StyleSheet.create({
   content: {
-    padding: 16,
-    paddingBottom: 32,
+    paddingHorizontal: screenPadding,
+    paddingTop: spacing.base,
+    paddingBottom: spacing.xxl,
   },
   centered: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
+    padding: spacing.xl,
   },
   summary: {
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: spacing.xl,
+  },
+  netAmount: {
+    marginTop: spacing.base,
   },
   mutedLabel: {
-    opacity: 0.6,
+    marginTop: 2,
   },
   summaryRow: {
     flexDirection: 'row',
-    gap: 32,
-    marginTop: 16,
+    gap: spacing.xxl,
+    marginTop: spacing.base,
   },
   summaryCol: {
     alignItems: 'center',
+    gap: 2,
   },
   payButton: {
-    marginTop: 16,
+    marginTop: spacing.base,
+    borderRadius: radii.button,
   },
-  sectionTitle: {
-    marginTop: 16,
-    marginBottom: 4,
+  section: {
+    marginBottom: spacing.xl,
   },
-  emptyText: {
-    opacity: 0.6,
-    paddingVertical: 8,
+  listRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm + 2,
+    gap: spacing.md,
+  },
+  listRowText: {
+    flex: 1,
   },
   shareRight: {
     alignItems: 'flex-end',
-  },
-  paidLabel: {
-    color: '#4CAF50',
-  },
-  owesLabel: {
-    opacity: 0.6,
+    gap: 2,
   },
   headerActions: {
     flexDirection: 'row',
   },
   dialogField: {
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   dialogLabel: {
-    marginBottom: 8,
-    marginTop: 4,
+    marginBottom: spacing.sm,
+    marginTop: spacing.xs,
   },
   error: {
-    marginTop: 4,
+    marginTop: spacing.xs,
   },
   errorText: {
-    marginBottom: 12,
+    marginBottom: spacing.md,
     textAlign: 'center',
   },
   retryButton: {
-    marginTop: 4,
+    marginTop: spacing.xs,
   },
 });

@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Platform, View } from 'react-native';
-import { TextInput } from 'react-native-paper';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 import { formatDate } from '../utils/format';
+import AppTextInput from './AppTextInput';
 
 interface Props {
   value: string; // YYYY-MM-DD
@@ -49,7 +49,14 @@ export default function DateField({ value, onChange }: Props) {
 
   return (
     <View>
-      <TextInput label="Date" value={formatDate(value)} editable={false} onPressIn={() => setShowPicker(true)} style={{ marginBottom: 12 }} />
+      <AppTextInput
+        label="Date"
+        value={formatDate(value)}
+        editable={false}
+        onPressIn={() => setShowPicker(true)}
+        right={<AppTextInput.Icon icon="calendar-outline" onPress={() => setShowPicker(true)} />}
+        style={{ marginBottom: 12 }}
+      />
       {showPicker && (
         <DateTimePicker
           value={toDate(value)}

@@ -1,19 +1,28 @@
-import { useCallback, useState } from 'react';
-import { Alert, FlatList, StyleSheet, View } from 'react-native';
-import { ActivityIndicator, Button, Divider, FAB, IconButton, List, Snackbar, Text, useTheme } from 'react-native-paper';
+import { useCallback, useMemo, useState } from 'react';
+import { Alert, SectionList, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Button, Divider, FAB, IconButton, Snackbar, Text, TouchableRipple, useTheme } from 'react-native-paper';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { expenseService, type Expense } from '../services/expenseService';
 import { ServiceError } from '../services/errors';
 import { PAYMENT_METHODS } from '../constants/expenseOptions';
-import { formatCurrency, formatDate } from '../utils/format';
+import { formatCurrency, dateGroupLabel } from '../utils/format';
 import { confirmDestructive } from '../utils/confirm';
+import CategoryIcon from '../components/CategoryIcon';
+import AmountText from '../components/AmountText';
+import EmptyState from '../components/EmptyState';
+import { spacing, screenPadding } from '../theme/spacing';
 import type { ExpensesStackParamList } from '../navigation/ExpensesNavigator';
 
 type Props = NativeStackScreenProps<ExpensesStackParamList, 'ExpenseList'>;
 
 const PAYMENT_METHOD_LABELS = Object.fromEntries(PAYMENT_METHODS.map((m) => [m.value, m.label]));
+
+interface Section {
+  title: string;
+  data: Expense[];
+}
 
 export default function ExpensesScreen({ navigation }: Props) {
   const theme = useTheme();
@@ -41,6 +50,20 @@ export default function ExpensesScreen({ navigation }: Props) {
     }, [loadExpenses])
   );
 
+  const sections = useMemo<Section[]>(() => {
+    const result: Section[] = [];
+    for (const item of expenses) {
+      const label = dateGroupLabel(item.date);
+      const last = result[result.length - 1];
+      if (last && last.title === label) {
+        last.data.push(item);
+      } else {
+        result.push({ title: label, data: [item] });
+      }
+    }
+    return result;
+  }, [expenses]);
+
   function handleDelete(expense: Expense) {
     confirmDestructive('Delete expense?', `${expense.category} · ${formatCurrency(expense.amount)}`, 'Delete', async () => {
       try {
@@ -55,7 +78,7 @@ export default function ExpensesScreen({ navigation }: Props) {
 
   if (isLoading) {
     return (
-      <View style={styles.centered}>
+      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
         <ActivityIndicator size="large" />
       </View>
     );
@@ -63,7 +86,7 @@ export default function ExpensesScreen({ navigation }: Props) {
 
   if (error) {
     return (
-      <View style={styles.centered}>
+      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
         <Text variant="bodyMedium" style={[styles.errorText, { color: theme.colors.error }]}>
           {error}
         </Text>
@@ -75,35 +98,48 @@ export default function ExpensesScreen({ navigation }: Props) {
   }
 
   return (
-    <View style={styles.container}>
-      <FlatList
-        data={expenses}
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <SectionList
+        sections={sections}
         keyExtractor={(item) => String(item.id)}
-        ItemSeparatorComponent={Divider}
-        contentContainerStyle={expenses.length === 0 ? styles.emptyContainer : undefined}
+        contentContainerStyle={expenses.length === 0 ? styles.emptyContainer : styles.list}
         refreshing={isLoading}
         onRefresh={loadExpenses}
+        stickySectionHeadersEnabled={false}
         ListEmptyComponent={
-          <View style={styles.centered}>
-            <Text variant="bodyMedium" style={styles.emptyText}>
-              No expenses yet. Tap + to add one.
-            </Text>
-          </View>
-        }
-        renderItem={({ item }) => (
-          <List.Item
-            title={item.category}
-            description={`${item.merchant ? item.merchant + ' · ' : ''}${formatDate(item.date)}${
-              item.payment_method ? ' · ' + (PAYMENT_METHOD_LABELS[item.payment_method] ?? item.payment_method) : ''
-            }`}
-            onPress={() => navigation.navigate('ExpenseDetail', { expenseId: item.id })}
-            right={() => (
-              <View style={styles.rightContent}>
-                <Text variant="titleMedium">{formatCurrency(item.amount)}</Text>
-                <IconButton icon="delete-outline" onPress={() => handleDelete(item)} />
-              </View>
-            )}
+          <EmptyState
+            icon="cash-remove"
+            title="No expenses yet"
+            description="Start tracking your spending to see it appear here."
+            actionLabel="Add Expense"
+            onActionPress={() => navigation.navigate('ExpenseForm', undefined)}
           />
+        }
+        renderSectionHeader={({ section }) => (
+          <Text variant="labelLarge" style={[styles.sectionHeader, { color: theme.colors.onSurfaceVariant, backgroundColor: theme.colors.background }]}>
+            {section.title}
+          </Text>
+        )}
+        renderItem={({ item, index, section }) => (
+          <View>
+            <TouchableRipple onPress={() => navigation.navigate('ExpenseDetail', { expenseId: item.id })} style={styles.rowTouchable}>
+              <View style={styles.row}>
+                <CategoryIcon category={item.category} />
+                <View style={styles.rowText}>
+                  <Text variant="bodyLarge" numberOfLines={1} style={{ color: theme.colors.onSurface }}>
+                    {item.merchant || item.category}
+                  </Text>
+                  <Text variant="bodySmall" numberOfLines={1} style={{ color: theme.colors.onSurfaceVariant }}>
+                    {item.category}
+                    {item.payment_method ? ' · ' + (PAYMENT_METHOD_LABELS[item.payment_method] ?? item.payment_method) : ''}
+                  </Text>
+                </View>
+                <AmountText value={`-${formatCurrency(item.amount)}`} variant="titleSmall" style={styles.rowAmount} />
+                <IconButton icon="delete-outline" size={18} onPress={() => handleDelete(item)} />
+              </View>
+            </TouchableRipple>
+            {index < section.data.length - 1 && <Divider style={[styles.divider, { backgroundColor: theme.colors.outlineVariant }]} />}
+          </View>
         )}
       />
 
@@ -141,24 +177,45 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
+    padding: spacing.xl,
+  },
+  list: {
+    paddingHorizontal: screenPadding,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xxl,
   },
   emptyContainer: {
     flexGrow: 1,
-  },
-  emptyText: {
-    opacity: 0.6,
-    textAlign: 'center',
+    justifyContent: 'center',
   },
   errorText: {
-    marginBottom: 12,
+    marginBottom: spacing.md,
     textAlign: 'center',
   },
   retryButton: {
-    marginTop: 4,
+    marginTop: spacing.xs,
   },
-  rightContent: {
+  sectionHeader: {
+    paddingTop: spacing.base,
+    paddingBottom: spacing.xs,
+  },
+  rowTouchable: {
+    marginHorizontal: -screenPadding,
+    paddingHorizontal: screenPadding,
+  },
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: spacing.sm,
+    gap: spacing.md,
+  },
+  rowText: {
+    flex: 1,
+  },
+  rowAmount: {
+    marginLeft: spacing.xs,
+  },
+  divider: {
+    marginLeft: 38 + spacing.md,
   },
 });

@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { ActivityIndicator, Button, Chip, Dialog, Divider, FAB, IconButton, List, Menu, Portal, Text, TextInput, useTheme } from 'react-native-paper';
+import { ActivityIndicator, Button, Chip, Dialog, Divider, FAB, IconButton, List, Menu, Portal, Text, useTheme } from 'react-native-paper';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -12,6 +12,10 @@ import { confirmDestructive } from '../utils/confirm';
 import DismissKeyboardView from '../components/DismissKeyboardView';
 import DoneAccessory, { DONE_ACCESSORY_ID } from '../components/DoneAccessory';
 import DateField from '../components/DateField';
+import AppTextInput from '../components/AppTextInput';
+import EmptyState from '../components/EmptyState';
+import AmountText from '../components/AmountText';
+import { spacing, screenPadding } from '../theme/spacing';
 import type { AccountsStackParamList } from '../navigation/AccountsNavigator';
 
 type Props = NativeStackScreenProps<AccountsStackParamList, 'RecurringPayments'>;
@@ -157,7 +161,7 @@ export default function RecurringPaymentsScreen({ route }: Props) {
 
   if (isLoading) {
     return (
-      <View style={styles.centered}>
+      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
         <ActivityIndicator size="large" />
       </View>
     );
@@ -166,28 +170,25 @@ export default function RecurringPaymentsScreen({ route }: Props) {
   return (
     <>
       <DismissKeyboardView>
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView style={{ backgroundColor: theme.colors.background }} contentContainerStyle={styles.content}>
           {error && (
             <Text variant="bodyMedium" style={[styles.errorText, { color: theme.colors.error }]}>
               {error}
             </Text>
           )}
           {items.length === 0 ? (
-            <Text variant="bodyMedium" style={styles.emptyText}>
-              No recurring payments yet. Add one for a subscription or bill charged to this card.
-            </Text>
+            <EmptyState icon="calendar-sync-outline" title="No recurring payments" description="Add one for a subscription or bill charged to this card." compact />
           ) : (
             items.map((item, index) => (
               <View key={item.id}>
                 <List.Item
                   title={item.name}
-                  titleStyle={!item.is_active ? styles.pausedText : undefined}
+                  titleStyle={!item.is_active ? styles.pausedText : { color: theme.colors.onSurface }}
                   description={`${FREQUENCY_LABELS[item.frequency]} · Next ${formatDate(item.next_date)}${item.is_active ? '' : ' · Paused'}`}
+                  descriptionStyle={{ color: theme.colors.onSurfaceVariant }}
                   right={() => (
                     <View style={styles.rowRight}>
-                      <Text variant="titleMedium" style={styles.rowAmount}>
-                        {formatCurrency(item.amount)}
-                      </Text>
+                      <AmountText value={formatCurrency(item.amount)} variant="titleSmall" style={styles.rowAmount} />
                       <Menu
                         visible={menuForId === item.id}
                         onDismiss={() => setMenuForId(null)}
@@ -218,14 +219,14 @@ export default function RecurringPaymentsScreen({ route }: Props) {
         <Dialog visible={isFormVisible} onDismiss={() => setFormVisible(false)}>
           <Dialog.ScrollArea style={styles.dialogScrollArea}>
             <ScrollView contentContainerStyle={styles.dialogContent} keyboardShouldPersistTaps="handled">
-              <TextInput label="Name / Merchant" value={name} onChangeText={setName} style={styles.dialogField} />
-              <TextInput
+              <AppTextInput label="Name / Merchant" value={name} onChangeText={setName} style={styles.dialogField} />
+              <AppTextInput
                 label="Amount"
                 value={amount}
                 onChangeText={setAmount}
                 keyboardType="decimal-pad"
                 inputAccessoryViewID={DONE_ACCESSORY_ID}
-                left={<TextInput.Affix text="₱" />}
+                left={<AppTextInput.Affix text="₱" />}
                 style={styles.dialogField}
               />
               <Text variant="labelLarge" style={styles.dialogLabel}>
@@ -242,8 +243,8 @@ export default function RecurringPaymentsScreen({ route }: Props) {
                 Next Payment Date
               </Text>
               <DateField value={nextDate} onChange={setNextDate} />
-              <TextInput label="Category (optional)" value={category} onChangeText={setCategory} style={styles.dialogField} />
-              <TextInput label="Note (optional)" value={note} onChangeText={setNote} style={styles.dialogField} />
+              <AppTextInput label="Category (optional)" value={category} onChangeText={setCategory} style={styles.dialogField} />
+              <AppTextInput label="Note (optional)" value={note} onChangeText={setNote} style={styles.dialogField} />
               {formErrors.length > 0 && (
                 <View style={styles.dialogField}>
                   {formErrors.map((e) => (
@@ -298,18 +299,15 @@ export default function RecurringPaymentsScreen({ route }: Props) {
 
 const styles = StyleSheet.create({
   content: {
-    padding: 16,
+    paddingHorizontal: screenPadding,
+    paddingTop: spacing.base,
     paddingBottom: 96,
   },
   centered: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
-  },
-  emptyText: {
-    opacity: 0.6,
-    paddingVertical: 8,
+    padding: spacing.xl,
   },
   pausedText: {
     opacity: 0.5,

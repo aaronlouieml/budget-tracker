@@ -9,10 +9,13 @@ import { fromCents } from '../utils/money';
 
 export type RecentExpensesPeriod = 'today' | 'week' | 'month';
 
-export const HOME_SECTION_KEYS = ['accountOverview', 'recentExpenses', 'upcomingDue', 'reservedMoney', 'monthlySummary', 'spendingByCategory'] as const;
+// Order here is display order on Home (recent activity first, then
+// accounts, then what's coming up) - purely presentational, no effect on
+// what each section contains.
+export const HOME_SECTION_KEYS = ['recentExpenses', 'accountOverview', 'upcomingDue', 'reservedMoney', 'monthlySummary', 'spendingByCategory'] as const;
 export type HomeSectionKey = (typeof HOME_SECTION_KEYS)[number];
 
-export const DEFAULT_VISIBLE_SECTIONS: HomeSectionKey[] = ['accountOverview', 'recentExpenses', 'upcomingDue', 'reservedMoney', 'monthlySummary'];
+export const DEFAULT_VISIBLE_SECTIONS: HomeSectionKey[] = ['recentExpenses', 'accountOverview', 'upcomingDue', 'reservedMoney', 'monthlySummary'];
 
 const SECTIONS_SETTING_KEY = 'home.visibleSections';
 const PERIOD_SETTING_KEY = 'home.recentExpensesPeriod';
