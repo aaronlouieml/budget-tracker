@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { ActivityIndicator, Button, Card, Chip, Dialog, FAB, IconButton, Menu, Portal, Text, TextInput, useTheme } from 'react-native-paper';
+import { ActivityIndicator, Button, Card, Chip, Dialog, FAB, IconButton, Menu, Portal, Text, useTheme } from 'react-native-paper';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { savedPlanService, type SavedPlan, type SavedPlanInput } from '../services/savedPlanService';
@@ -11,6 +11,11 @@ import { confirmDestructive } from '../utils/confirm';
 import DismissKeyboardView from '../components/DismissKeyboardView';
 import DoneAccessory, { DONE_ACCESSORY_ID } from '../components/DoneAccessory';
 import DateField from '../components/DateField';
+import AppTextInput from '../components/AppTextInput';
+import EmptyState from '../components/EmptyState';
+import AmountText from '../components/AmountText';
+import { spacing, screenPadding } from '../theme/spacing';
+import { radii } from '../theme/radii';
 
 interface AllocationDraft {
   key: string;
@@ -158,7 +163,7 @@ export default function SavedPlansScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.centered}>
+      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
         <ActivityIndicator size="large" />
       </View>
     );
@@ -167,9 +172,9 @@ export default function SavedPlansScreen() {
   return (
     <>
       <DismissKeyboardView>
-        <ScrollView contentContainerStyle={styles.content}>
-          <Text variant="bodyMedium" style={styles.intro}>
-            Plan for money you expect to receive later. Creating a plan doesn't change any balance — use "Import" once it actually arrives.
+        <ScrollView style={{ backgroundColor: theme.colors.background }} contentContainerStyle={styles.content}>
+          <Text variant="bodyMedium" style={[styles.intro, { color: theme.colors.onSurfaceVariant }]}>
+            Save a slice for later. Creating a plan doesn't touch your balance — use "Import" once the money actually arrives.
           </Text>
           {error && (
             <Text variant="bodyMedium" style={[styles.errorText, { color: theme.colors.error }]}>
@@ -177,17 +182,23 @@ export default function SavedPlansScreen() {
             </Text>
           )}
           {plans.length === 0 ? (
-            <Text variant="bodyMedium" style={styles.emptyText}>
-              No saved plans yet.
-            </Text>
+            <EmptyState
+              icon="calendar-clock-outline"
+              title="No saved plans yet"
+              description="Plan for money you expect later, like a bonus or a refund."
+              actionLabel="New Plan"
+              onActionPress={openCreateForm}
+            />
           ) : (
             plans.map((plan) => (
-              <Card key={plan.id} style={styles.card}>
+              <Card key={plan.id} mode="outlined" style={[styles.card, { borderColor: theme.colors.outline }]}>
                 <Card.Content>
                   <View style={styles.cardHeader}>
                     <View style={styles.cardHeaderText}>
-                      <Text variant="titleMedium">{plan.name}</Text>
-                      <Text variant="bodySmall" style={styles.mutedLabel}>
+                      <Text variant="titleMedium" style={{ color: theme.colors.onSurface }}>
+                        {plan.name}
+                      </Text>
+                      <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
                         {plan.expected_date ? `Expected ${formatDate(plan.expected_date)}` : 'No expected date'}
                         {plan.used_at ? ' · Previously imported' : ''}
                       </Text>
@@ -205,14 +216,16 @@ export default function SavedPlansScreen() {
                     <View style={styles.allocationList}>
                       {plan.allocations.map((a) => (
                         <View key={a.id} style={styles.allocationRow}>
-                          <Text variant="bodyMedium">{a.name}</Text>
-                          <Text variant="bodyMedium">{formatCurrency(a.amount)}</Text>
+                          <Text variant="bodyMedium" style={{ color: theme.colors.onSurface }}>
+                            {a.name}
+                          </Text>
+                          <AmountText value={formatCurrency(a.amount)} variant="bodyMedium" tone="muted" />
                         </View>
                       ))}
                     </View>
                   )}
                   <View style={styles.cardFooter}>
-                    <Text variant="bodySmall" style={styles.mutedLabel}>
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
                       Allocated {formatCurrency(plan.allocationsTotal)}
                       {plan.planned_amount ? ` of ${formatCurrency(plan.planned_amount)} planned` : ''}
                     </Text>
@@ -234,7 +247,7 @@ export default function SavedPlansScreen() {
           <Dialog.Title>New Saved Plan</Dialog.Title>
           <Dialog.ScrollArea style={styles.dialogScrollArea}>
             <ScrollView contentContainerStyle={styles.dialogContent} keyboardShouldPersistTaps="handled">
-              <TextInput label="Plan Name" value={name} onChangeText={setName} placeholder="13th Month Pay" style={styles.dialogField} />
+              <AppTextInput label="Plan Name" value={name} onChangeText={setName} placeholder="13th Month Pay" style={styles.dialogField} />
 
               <View style={styles.chipRow}>
                 <Chip selected={hasExpectedDate} onPress={() => setHasExpectedDate((v) => !v)} mode={hasExpectedDate ? 'flat' : 'outlined'}>
@@ -243,13 +256,13 @@ export default function SavedPlansScreen() {
               </View>
               {hasExpectedDate && <DateField value={expectedDate} onChange={setExpectedDate} />}
 
-              <TextInput
+              <AppTextInput
                 label="Planned Amount (optional)"
                 value={plannedAmount}
                 onChangeText={setPlannedAmount}
                 keyboardType="decimal-pad"
                 inputAccessoryViewID={DONE_ACCESSORY_ID}
-                left={<TextInput.Affix text="₱" />}
+                left={<AppTextInput.Affix text="₱" />}
                 style={styles.dialogField}
               />
 
@@ -258,8 +271,8 @@ export default function SavedPlansScreen() {
               </Text>
               {allocations.map((a) => (
                 <View key={a.key} style={styles.allocationEditRow}>
-                  <TextInput label="Name" value={a.name} onChangeText={(v) => updateAllocation(a.key, 'name', v)} style={styles.allocationNameField} dense />
-                  <TextInput
+                  <AppTextInput label="Name" value={a.name} onChangeText={(v) => updateAllocation(a.key, 'name', v)} style={styles.allocationNameField} dense />
+                  <AppTextInput
                     label="Amount"
                     value={a.amount}
                     onChangeText={(v) => updateAllocation(a.key, 'amount', v)}
@@ -275,7 +288,7 @@ export default function SavedPlansScreen() {
                 Add allocation
               </Button>
 
-              <TextInput label="Note (optional)" value={note} onChangeText={setNote} style={styles.dialogField} />
+              <AppTextInput label="Note (optional)" value={note} onChangeText={setNote} style={styles.dialogField} />
 
               {formErrors.length > 0 && (
                 <View style={styles.dialogField}>
@@ -304,13 +317,13 @@ export default function SavedPlansScreen() {
             <Text variant="bodySmall" style={styles.mutedLabel}>
               This increases the account's actual balance and creates real reservations for each allocation.
             </Text>
-            <TextInput
+            <AppTextInput
               label="Amount Received"
               value={importAmount}
               onChangeText={setImportAmount}
               keyboardType="decimal-pad"
               inputAccessoryViewID={DONE_ACCESSORY_ID}
-              left={<TextInput.Affix text="₱" />}
+              left={<AppTextInput.Affix text="₱" />}
               style={[styles.dialogField, styles.amountFieldSpacing]}
             />
             <Text variant="labelLarge" style={styles.dialogLabel}>

@@ -1,18 +1,22 @@
 import { CATEGORIES } from './expenseOptions';
 
+// A restrained, muted palette (for the spending-by-category chart only -
+// transaction rows use one neutral icon treatment, see categoryIcons.ts).
+// Kept low-chroma/cohesive rather than a saturated rainbow so the chart
+// still reads as "calm" even with many categories.
 const PALETTE = [
-  '#6750A4',
-  '#B5838D',
-  '#4CAF9D',
-  '#E8A33D',
-  '#5C8AE6',
-  '#D9534F',
-  '#8BC34A',
-  '#FF7043',
-  '#26A69A',
-  '#AB47BC',
-  '#789262',
-  '#795548',
+  '#21B07A',
+  '#5B7FD6',
+  '#E9A23B',
+  '#B08AD9',
+  '#4FB8C4',
+  '#E38FA0',
+  '#7FA6E0',
+  '#C99A5B',
+  '#6FC29A',
+  '#9B8FE0',
+  '#5B6472',
+  '#D68BAE',
 ];
 
 export const CATEGORY_COLORS: Record<string, string> = Object.fromEntries(

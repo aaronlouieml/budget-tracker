@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { ActivityIndicator, Button, Divider, IconButton, List, Text, useTheme } from 'react-native-paper';
+import { ActivityIndicator, Button, Divider, IconButton, Text, useTheme } from 'react-native-paper';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -9,6 +9,10 @@ import { ServiceError } from '../services/errors';
 import { PAYMENT_METHODS } from '../constants/expenseOptions';
 import { formatCurrency, formatDate } from '../utils/format';
 import { confirmDestructive } from '../utils/confirm';
+import CategoryIcon from '../components/CategoryIcon';
+import AmountText from '../components/AmountText';
+import { spacing, screenPadding } from '../theme/spacing';
+import { tabularNumberStyle } from '../theme/typography';
 import type { ExpensesStackParamList } from '../navigation/ExpensesNavigator';
 
 type Props = NativeStackScreenProps<ExpensesStackParamList, 'ExpenseDetail'>;
@@ -69,7 +73,7 @@ export default function ExpenseDetailScreen({ route, navigation }: Props) {
 
   if (isLoading) {
     return (
-      <View style={styles.centered}>
+      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
         <ActivityIndicator size="large" />
       </View>
     );
@@ -77,7 +81,7 @@ export default function ExpenseDetailScreen({ route, navigation }: Props) {
 
   if (error || !detail) {
     return (
-      <View style={styles.centered}>
+      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
         <Text variant="bodyMedium" style={[styles.errorText, { color: theme.colors.error }]}>
           {error ?? 'Unable to load expense.'}
         </Text>
@@ -91,33 +95,44 @@ export default function ExpenseDetailScreen({ route, navigation }: Props) {
   const hasSplit = detail.shares.length > 0;
 
   return (
-    <ScrollView contentContainerStyle={styles.content}>
+    <ScrollView style={{ backgroundColor: theme.colors.background }} contentContainerStyle={styles.content}>
       <View style={styles.summary}>
-        <Text variant="displaySmall">{formatCurrency(detail.amount)}</Text>
-        <Text variant="bodyMedium" style={styles.mutedLabel}>
-          Total
+        <CategoryIcon category={detail.category} size={48} />
+        <Text variant="displaySmall" style={[tabularNumberStyle, styles.amount]}>
+          {formatCurrency(detail.amount)}
         </Text>
-        {detail.merchant && <Text variant="titleMedium">{detail.merchant}</Text>}
-        <Text variant="bodyMedium" style={styles.mutedLabel}>
-          {formatDate(detail.date)}
+        {detail.merchant && (
+          <Text variant="titleMedium" style={{ color: theme.colors.onSurface }}>
+            {detail.merchant}
+          </Text>
+        )}
+        <Text variant="bodyMedium" style={[styles.mutedLabel, { color: theme.colors.onSurfaceVariant }]}>
+          {detail.category} · {formatDate(detail.date)}
           {detail.payment_method ? ' · ' + (PAYMENT_METHOD_LABELS[detail.payment_method] ?? detail.payment_method) : ''}
         </Text>
       </View>
 
       {hasSplit && (
         <>
-          <View style={styles.myShareRow}>
-            <Text variant="bodyMedium">My Share</Text>
-            <Text variant="titleMedium">{formatCurrency(detail.myShare)}</Text>
+          <View style={[styles.myShareRow, { borderColor: theme.colors.outlineVariant }]}>
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurface }}>
+              My Share
+            </Text>
+            <AmountText value={formatCurrency(detail.myShare)} variant="titleMedium" />
           </View>
 
-          <Text variant="titleMedium" style={styles.sectionTitle}>
+          <Text variant="titleMedium" style={[styles.sectionTitle, { color: theme.colors.onBackground }]}>
             Split With
           </Text>
           {detail.shares.map((share, index) => (
             <View key={share.id}>
-              <List.Item title={share.person_name} right={() => <Text variant="titleMedium">{formatCurrency(share.amount)}</Text>} />
-              {index < detail.shares.length - 1 && <Divider />}
+              <View style={styles.shareRow}>
+                <Text variant="bodyLarge" style={{ color: theme.colors.onSurface }}>
+                  {share.person_name}
+                </Text>
+                <AmountText value={formatCurrency(share.amount)} variant="titleSmall" />
+              </View>
+              {index < detail.shares.length - 1 && <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />}
             </View>
           ))}
         </>
@@ -128,32 +143,44 @@ export default function ExpenseDetailScreen({ route, navigation }: Props) {
 
 const styles = StyleSheet.create({
   content: {
-    padding: 16,
-    paddingBottom: 32,
+    paddingHorizontal: screenPadding,
+    paddingTop: spacing.base,
+    paddingBottom: spacing.xxl,
   },
   centered: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
+    padding: spacing.xl,
   },
   summary: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: spacing.xl,
+    gap: spacing.xs,
+  },
+  amount: {
+    marginTop: spacing.sm,
   },
   mutedLabel: {
-    opacity: 0.6,
-    marginBottom: 4,
+    marginBottom: spacing.xs,
   },
   myShareRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 8,
-    marginBottom: 8,
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  shareRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.sm + 2,
   },
   sectionTitle: {
-    marginTop: 8,
-    marginBottom: 4,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
   },
   headerActions: {
     flexDirection: 'row',

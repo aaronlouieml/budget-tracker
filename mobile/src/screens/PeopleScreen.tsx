@@ -1,12 +1,15 @@
 import { useCallback, useState } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
-import { ActivityIndicator, Button, Card, FAB, Text, useTheme } from 'react-native-paper';
+import { ActivityIndicator, Avatar, Button, Divider, FAB, Text, TouchableRipple, useTheme } from 'react-native-paper';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { personService, type Person } from '../services/personService';
 import { ServiceError } from '../services/errors';
 import { formatCurrency } from '../utils/format';
+import AmountText from '../components/AmountText';
+import EmptyState from '../components/EmptyState';
+import { spacing, screenPadding } from '../theme/spacing';
 import type { PeopleStackParamList } from '../navigation/PeopleNavigator';
 
 type Props = NativeStackScreenProps<PeopleStackParamList, 'PersonList'>;
@@ -37,7 +40,7 @@ export default function PeopleScreen({ navigation }: Props) {
 
   if (isLoading) {
     return (
-      <View style={styles.centered}>
+      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
         <ActivityIndicator size="large" />
       </View>
     );
@@ -45,7 +48,7 @@ export default function PeopleScreen({ navigation }: Props) {
 
   if (error) {
     return (
-      <View style={styles.centered}>
+      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
         <Text variant="bodyMedium" style={[styles.errorText, { color: theme.colors.error }]}>
           {error}
         </Text>
@@ -59,35 +62,43 @@ export default function PeopleScreen({ navigation }: Props) {
   const total = people.reduce((sum, p) => sum + Number(p.outstanding), 0);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <FlatList
         data={people}
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={people.length === 0 ? styles.emptyContainer : styles.list}
         refreshing={isLoading}
         onRefresh={loadPeople}
+        ItemSeparatorComponent={() => <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />}
         ListHeaderComponent={
           people.length > 0 ? (
-            <View style={styles.totalRow}>
-              <Text variant="titleMedium">Total Owed to You</Text>
-              <Text variant="headlineSmall">{formatCurrency(total)}</Text>
+            <View style={styles.totalBlock}>
+              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                Total owed to you
+              </Text>
+              <AmountText value={formatCurrency(total)} variant="displaySmall" tone={total > 0 ? 'positive' : 'default'} />
             </View>
           ) : null
         }
         ListEmptyComponent={
-          <View style={styles.centered}>
-            <Text variant="bodyMedium" style={styles.emptyText}>
-              No one owes you money yet. Tap + to add a person.
-            </Text>
-          </View>
+          <EmptyState
+            icon="hand-coin-outline"
+            title="No one owes you yet"
+            description="Add a person to start tracking shared expenses and repayments."
+            actionLabel="Add Person"
+            onActionPress={() => navigation.navigate('PersonForm', undefined)}
+          />
         }
         renderItem={({ item }) => (
-          <Card style={styles.card} onPress={() => navigation.navigate('PersonDetail', { personId: item.id })}>
-            <Card.Content style={styles.cardContent}>
-              <Text variant="titleMedium">{item.name}</Text>
-              <Text variant="titleMedium">{formatCurrency(item.outstanding)}</Text>
-            </Card.Content>
-          </Card>
+          <TouchableRipple onPress={() => navigation.navigate('PersonDetail', { personId: item.id })} style={styles.rowTouchable}>
+            <View style={styles.row}>
+              <Avatar.Text size={40} label={item.name.slice(0, 1).toUpperCase()} style={{ backgroundColor: theme.colors.primaryContainer }} color={theme.colors.onPrimaryContainer} />
+              <Text variant="bodyLarge" style={[styles.rowName, { color: theme.colors.onSurface }]} numberOfLines={1}>
+                {item.name}
+              </Text>
+              <AmountText value={formatCurrency(item.outstanding)} variant="titleSmall" tone={Number(item.outstanding) > 0 ? 'positive' : 'muted'} />
+            </View>
+          </TouchableRipple>
         )}
       />
 
@@ -104,43 +115,43 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
+    padding: spacing.xl,
   },
   list: {
-    padding: 16,
-    gap: 12,
+    paddingHorizontal: screenPadding,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xxl,
   },
-  totalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
+  totalBlock: {
+    marginBottom: spacing.lg,
   },
   emptyContainer: {
     flexGrow: 1,
-  },
-  emptyText: {
-    opacity: 0.6,
-    textAlign: 'center',
+    justifyContent: 'center',
   },
   errorText: {
-    marginBottom: 12,
+    marginBottom: spacing.md,
     textAlign: 'center',
   },
   retryButton: {
-    marginTop: 4,
+    marginTop: spacing.xs,
   },
-  card: {
-    marginBottom: 4,
+  rowTouchable: {
+    marginHorizontal: -screenPadding,
+    paddingHorizontal: screenPadding,
   },
-  cardContent: {
+  row: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    paddingVertical: spacing.sm + 2,
+    gap: spacing.md,
+  },
+  rowName: {
+    flex: 1,
   },
   fab: {
     position: 'absolute',
-    right: 16,
-    bottom: 16,
+    right: spacing.base,
+    bottom: spacing.base,
   },
 });

@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
-import { ActivityIndicator, Button, Card, FAB, Text, useTheme } from 'react-native-paper';
+import { ActivityIndicator, Button, FAB, Text, TouchableRipple, useTheme } from 'react-native-paper';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -8,8 +8,13 @@ import { bankAccountService, type BankAccount } from '../services/bankAccountSer
 import { creditCardService, type CreditCard } from '../services/creditCardService';
 import { ServiceError } from '../services/errors';
 import { ACCOUNT_TYPES } from '../constants/accountOptions';
-import { STATUS_COLORS, STATUS_LABELS } from '../constants/cardStatus';
+import { STATUS_LABELS, STATUS_TONE } from '../constants/cardStatus';
 import { formatCurrency, formatShortDate } from '../utils/format';
+import StatusPill from '../components/StatusPill';
+import AmountText from '../components/AmountText';
+import EmptyState from '../components/EmptyState';
+import { spacing, screenPadding } from '../theme/spacing';
+import { radii } from '../theme/radii';
 import type { AccountsStackParamList } from '../navigation/AccountsNavigator';
 
 type Props = NativeStackScreenProps<AccountsStackParamList, 'AccountList'>;
@@ -47,7 +52,7 @@ export default function AccountsScreen({ navigation }: Props) {
 
   if (isLoading) {
     return (
-      <View style={styles.centered}>
+      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
         <ActivityIndicator size="large" />
       </View>
     );
@@ -55,7 +60,7 @@ export default function AccountsScreen({ navigation }: Props) {
 
   if (error) {
     return (
-      <View style={styles.centered}>
+      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
         <Text variant="bodyMedium" style={[styles.errorText, { color: theme.colors.error }]}>
           {error}
         </Text>
@@ -70,109 +75,120 @@ export default function AccountsScreen({ navigation }: Props) {
     ...accounts.map((data) => ({ kind: 'account' as const, data })),
     ...cards.map((data) => ({ kind: 'card' as const, data })),
   ];
+  const totalAvailable = accounts.reduce((sum, a) => sum + Number(a.available), 0);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <FlatList
         data={items}
         keyExtractor={(item) => `${item.kind}-${item.data.id}`}
         contentContainerStyle={items.length === 0 ? styles.emptyContainer : styles.list}
         refreshing={isLoading}
         onRefresh={load}
+        ListHeaderComponent={
+          items.length > 0 ? (
+            <View style={styles.totalBlock}>
+              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                Total available
+              </Text>
+              <AmountText value={formatCurrency(totalAvailable)} variant="displaySmall" />
+              <Text variant="labelLarge" style={[styles.listLabel, { color: theme.colors.onSurfaceVariant }]}>
+                Your accounts
+              </Text>
+            </View>
+          ) : null
+        }
         ListEmptyComponent={
-          <View style={styles.centered}>
-            <Text variant="bodyMedium" style={styles.emptyText}>
-              No accounts yet. Tap + to add one.
-            </Text>
-          </View>
+          <EmptyState
+            icon="bank-outline"
+            title="No accounts yet"
+            description="Add a bank account, cash, or e-wallet, or a credit card, to start tracking your money."
+            actionLabel="Add Account"
+            onActionPress={() => navigation.navigate('AccountForm', undefined)}
+          />
         }
         renderItem={({ item }) =>
           item.kind === 'account' ? (
-            <Card style={styles.card} onPress={() => navigation.navigate('AccountDetail', { accountId: item.data.id })}>
-              <Card.Content>
+            <TouchableRipple
+              onPress={() => navigation.navigate('AccountDetail', { accountId: item.data.id })}
+              style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.outline }]}
+              borderless
+            >
+              <View>
                 <View style={styles.headerRow}>
-                  <Text variant="titleMedium">{item.data.name}</Text>
-                  <View style={styles.typeBadge}>
-                    <Text variant="labelSmall" style={styles.typeBadgeText}>
-                      {(TYPE_LABELS[item.data.type] ?? item.data.type).toUpperCase()}
-                    </Text>
-                  </View>
+                  <Text variant="titleMedium" numberOfLines={1} style={[styles.cardTitle, { color: theme.colors.onSurface }]}>
+                    {item.data.name}
+                  </Text>
+                  <StatusPill label={(TYPE_LABELS[item.data.type] ?? item.data.type).toUpperCase()} tone="neutral" />
                 </View>
+                <AmountText value={formatCurrency(item.data.balance)} variant="headlineSmall" style={styles.cardAmount} />
                 <View style={styles.detailRow}>
                   <View style={styles.detailCol}>
-                    <Text variant="bodySmall" style={styles.detailLabel}>
-                      Current
-                    </Text>
-                    <Text variant="bodyMedium">{formatCurrency(item.data.balance)}</Text>
-                  </View>
-                  <View style={styles.detailCol}>
-                    <Text variant="bodySmall" style={styles.detailLabel}>
-                      Reserved
-                    </Text>
-                    <Text variant="bodyMedium">{formatCurrency(item.data.reserved)}</Text>
-                  </View>
-                  <View style={styles.detailCol}>
-                    <Text variant="bodySmall" style={styles.detailLabel}>
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
                       Available
                     </Text>
-                    <Text variant="titleMedium">{formatCurrency(item.data.available)}</Text>
+                    <AmountText value={formatCurrency(item.data.available)} variant="titleSmall" tone="positive" />
                   </View>
-                </View>
-              </Card.Content>
-            </Card>
-          ) : (
-            <Card style={styles.card} onPress={() => navigation.navigate('CreditCardDetail', { cardId: item.data.id })}>
-              <Card.Content>
-                <View style={styles.headerRow}>
-                  <Text variant="titleMedium">{item.data.name}</Text>
-                  <View style={[styles.typeBadge, styles.creditCardBadge]}>
-                    <Text variant="labelSmall" style={styles.typeBadgeText}>
-                      CREDIT CARD
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.cardStatusRow}>
-                  <Text variant="bodySmall" style={styles.detailLabel}>
-                    {item.data.bank}
-                  </Text>
-                  <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[item.data.status] }]}>
-                    <Text variant="labelSmall" style={styles.statusText}>
-                      {STATUS_LABELS[item.data.status]}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.detailRow}>
                   <View style={styles.detailCol}>
-                    <Text variant="bodySmall" style={styles.detailLabel}>
-                      Outstanding
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                      Set Aside
                     </Text>
-                    <Text variant="bodyMedium">{formatCurrency(item.data.unpaid)}</Text>
+                    <AmountText value={formatCurrency(item.data.reserved)} variant="titleSmall" tone="muted" />
                   </View>
+                </View>
+              </View>
+            </TouchableRipple>
+          ) : (
+            <TouchableRipple
+              onPress={() => navigation.navigate('CreditCardDetail', { cardId: item.data.id })}
+              style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.outline }]}
+              borderless
+            >
+              <View>
+                <View style={styles.headerRow}>
+                  <Text variant="titleMedium" numberOfLines={1} style={[styles.cardTitle, { color: theme.colors.onSurface }]}>
+                    {item.data.name}
+                  </Text>
+                  <StatusPill label="CREDIT CARD" tone="accent" />
+                </View>
+                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginBottom: spacing.xs }}>
+                  {item.data.bank}
+                </Text>
+                <AmountText value={formatCurrency(item.data.unpaid)} variant="headlineSmall" style={styles.cardAmount} />
+                <Text variant="bodySmall" style={[styles.outstandingLabel, { color: theme.colors.onSurfaceVariant }]}>
+                  Outstanding
+                </Text>
+                <View style={styles.detailRow}>
                   {Number(item.data.othersOwe) > 0 && (
                     <>
                       <View style={styles.detailCol}>
-                        <Text variant="bodySmall" style={styles.detailLabel}>
-                          My Share
+                        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                          You owe
                         </Text>
-                        <Text variant="bodyMedium">{formatCurrency(item.data.myResponsibility)}</Text>
+                        <AmountText value={formatCurrency(item.data.myResponsibility)} variant="titleSmall" />
                       </View>
                       <View style={styles.detailCol}>
-                        <Text variant="bodySmall" style={styles.detailLabel}>
-                          Others Owe
+                        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                          Others owe
                         </Text>
-                        <Text variant="bodyMedium">{formatCurrency(item.data.othersOwe)}</Text>
+                        <AmountText value={formatCurrency(item.data.othersOwe)} variant="titleSmall" tone="positive" />
                       </View>
                     </>
                   )}
                   <View style={styles.detailCol}>
-                    <Text variant="bodySmall" style={styles.detailLabel}>
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
                       Due
                     </Text>
-                    <Text variant="titleMedium">{formatShortDate(item.data.next_due_date)}</Text>
+                    <Text variant="titleSmall" style={{ color: theme.colors.onSurface }}>
+                      {formatShortDate(item.data.next_due_date)}
+                    </Text>
+                  </View>
+                  <View style={styles.statusPillWrap}>
+                    <StatusPill label={STATUS_LABELS[item.data.status]} tone={STATUS_TONE[item.data.status]} />
                   </View>
                 </View>
-              </Card.Content>
-            </Card>
+              </View>
+            </TouchableRipple>
           )
         }
       />
@@ -199,75 +215,61 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
+    padding: spacing.xl,
   },
   list: {
-    padding: 16,
-    gap: 12,
+    padding: screenPadding,
+    gap: spacing.md,
+  },
+  totalBlock: {
+    marginBottom: spacing.lg,
+  },
+  listLabel: {
+    marginTop: spacing.lg,
   },
   emptyContainer: {
     flexGrow: 1,
-  },
-  emptyText: {
-    opacity: 0.6,
-    textAlign: 'center',
+    justifyContent: 'center',
   },
   errorText: {
-    marginBottom: 12,
+    marginBottom: spacing.md,
     textAlign: 'center',
   },
   retryButton: {
-    marginTop: 4,
+    marginTop: spacing.xs,
   },
   card: {
-    marginBottom: 4,
+    borderRadius: radii.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: spacing.base,
+    marginBottom: spacing.md,
   },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: spacing.sm,
   },
-  typeBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    backgroundColor: 'rgba(128,128,128,0.2)',
+  cardTitle: {
+    flex: 1,
+    marginRight: spacing.sm,
   },
-  creditCardBadge: {
-    backgroundColor: 'rgba(103,80,164,0.2)',
+  cardAmount: {
+    marginBottom: 2,
   },
-  typeBadgeText: {
-    opacity: 0.8,
-  },
-  cardStatusRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statusText: {
-    color: '#FFFFFF',
+  outstandingLabel: {
+    marginBottom: spacing.md,
   },
   detailRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 12,
+    flexWrap: 'wrap',
+    gap: spacing.xl,
+    alignItems: 'flex-end',
   },
   detailCol: {
-    alignItems: 'flex-start',
+    gap: 2,
   },
-  detailLabel: {
-    opacity: 0.6,
-    marginBottom: 2,
-  },
-  fab: {
-    position: 'absolute',
-    right: 16,
-    bottom: 16,
+  statusPillWrap: {
+    marginLeft: 'auto',
   },
 });

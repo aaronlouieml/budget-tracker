@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "mobile",
+    "name": "Pocketcakes",
     "slug": "mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -29,7 +29,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Budget Tracker uses the camera to scan receipts."
+          "cameraPermission": "Pocketcakes uses the camera to scan receipts."
         }
       ],
       "expo-sqlite"

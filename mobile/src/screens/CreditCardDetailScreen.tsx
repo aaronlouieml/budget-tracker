@@ -6,12 +6,10 @@ import {
   Dialog,
   Divider,
   IconButton,
-  List,
   Menu,
   Portal,
   RadioButton,
   Text,
-  TextInput,
   useTheme,
 } from 'react-native-paper';
 import { useFocusEffect } from '@react-navigation/native';
@@ -22,11 +20,19 @@ import { creditCardService, type CreditCardDetail, type PaySource } from '../ser
 import { bankAccountService, type BankAccount, type BankAccountDetail } from '../services/bankAccountService';
 import { recurringPaymentService, type RecurringPayment } from '../services/recurringPaymentService';
 import { ServiceError } from '../services/errors';
-import { STATUS_COLORS, STATUS_LABELS } from '../constants/cardStatus';
+import { STATUS_LABELS, STATUS_TONE } from '../constants/cardStatus';
 import { formatCurrency, formatDate, todayISODate } from '../utils/format';
 import { confirmDestructive } from '../utils/confirm';
 import DismissKeyboardView from '../components/DismissKeyboardView';
 import DoneAccessory, { DONE_ACCESSORY_ID } from '../components/DoneAccessory';
+import AppTextInput from '../components/AppTextInput';
+import StatusPill from '../components/StatusPill';
+import AmountText from '../components/AmountText';
+import SectionHeader from '../components/SectionHeader';
+import EmptyState from '../components/EmptyState';
+import { spacing, screenPadding } from '../theme/spacing';
+import { radii } from '../theme/radii';
+import { tabularNumberStyle } from '../theme/typography';
 import type { AccountsStackParamList } from '../navigation/AccountsNavigator';
 import type { RootTabParamList } from '../navigation/AppNavigator';
 
@@ -181,7 +187,7 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
 
   if (isLoading) {
     return (
-      <View style={styles.centered}>
+      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
         <ActivityIndicator size="large" />
       </View>
     );
@@ -189,7 +195,7 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
 
   if (error || !detail) {
     return (
-      <View style={styles.centered}>
+      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
         <Text variant="bodyMedium" style={[styles.errorText, { color: theme.colors.error }]}>
           {error ?? 'Unable to load credit card.'}
         </Text>
@@ -202,144 +208,150 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
 
   const { card, transactions, payments } = detail;
   const selectedAccount = accounts.find((a) => a.id === payAccountId);
+  const hasSharedResponsibility = Number(card.othersOwe) > 0;
 
   return (
     <>
       <DismissKeyboardView>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.summary}>
-          <Text variant="bodyMedium" style={styles.bank}>
-            {card.bank}
-          </Text>
-          <Text variant="displaySmall">{formatCurrency(card.unpaid)}</Text>
-          <Text variant="bodyMedium" style={styles.unpaidLabel}>
-            Unpaid balance
-          </Text>
-
-          <View style={styles.statusRow}>
-            <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[card.status] }]}>
-              <Text variant="labelSmall" style={styles.statusText}>
-                {STATUS_LABELS[card.status]}
+      <ScrollView style={{ backgroundColor: theme.colors.background }} contentContainerStyle={styles.content}>
+        <View style={[styles.summary, { backgroundColor: theme.colors.primary }]}>
+          <View style={styles.summaryTopRow}>
+            <View>
+              <Text variant="bodyMedium" style={[styles.bank, { color: theme.colors.inversePrimary }]}>
+                {card.bank}
               </Text>
+              <StatusPill label="CREDIT CARD" tone="neutral" />
             </View>
-            <Text variant="bodyMedium">Due {formatDate(card.next_due_date)}</Text>
+            <StatusPill label={STATUS_LABELS[card.status]} tone={STATUS_TONE[card.status]} />
           </View>
 
-          {Number(card.othersOwe) > 0 && (
-            <View style={styles.responsibilityRow}>
-              <View style={styles.summaryCol}>
-                <Text variant="bodySmall" style={styles.mutedLabel}>
-                  My Responsibility
-                </Text>
-                <Text variant="titleMedium">{formatCurrency(card.myResponsibility)}</Text>
+          <Text variant="displaySmall" style={[tabularNumberStyle, styles.unpaidAmount, { color: theme.colors.onPrimary }]}>
+            {formatCurrency(card.unpaid)}
+          </Text>
+          <Text variant="bodyMedium" style={[styles.unpaidLabel, { color: theme.colors.inversePrimary }]}>
+            Outstanding
+          </Text>
+
+          {hasSharedResponsibility && (
+            <>
+              <View style={[styles.summaryDivider, { backgroundColor: theme.colors.onPrimary }]} />
+              <View style={styles.responsibilityRow}>
+                <View>
+                  <Text variant="bodySmall" style={{ color: theme.colors.inversePrimary }}>
+                    You owe
+                  </Text>
+                  <Text variant="titleMedium" style={[tabularNumberStyle, { color: theme.colors.onPrimary }]}>
+                    {formatCurrency(card.myResponsibility)}
+                  </Text>
+                </View>
+                <View style={styles.responsibilityRight}>
+                  <Text variant="bodySmall" style={{ color: theme.colors.inversePrimary }}>
+                    Others owe you
+                  </Text>
+                  <Text variant="titleMedium" style={[tabularNumberStyle, { color: theme.colors.onPrimary }]}>
+                    {formatCurrency(card.othersOwe)}
+                  </Text>
+                </View>
               </View>
-              <View style={styles.summaryCol}>
-                <Text variant="bodySmall" style={styles.mutedLabel}>
-                  Others Owe Me
-                </Text>
-                <Text variant="titleMedium">{formatCurrency(card.othersOwe)}</Text>
-              </View>
-            </View>
+            </>
           )}
 
-          <View style={styles.buttonRow}>
-            <Button mode="contained" onPress={openPayDialog} style={styles.actionButton} icon="bank-transfer-out">
-              Pay Credit Card
-            </Button>
-            {Number(card.othersOwe) > 0 && (
-              <Button
-                mode="outlined"
-                onPress={() => navigation.getParent<BottomTabNavigationProp<RootTabParamList>>()?.navigate('Money Owed')}
-                style={styles.actionButton}
-                icon="hand-coin-outline"
-              >
-                Money Owed
-              </Button>
-            )}
-          </View>
+          <Text variant="bodyMedium" style={[styles.dueText, { color: theme.colors.inversePrimary }]}>
+            Due {formatDate(card.next_due_date)}
+          </Text>
         </View>
 
-        <Text variant="titleMedium" style={styles.sectionTitle}>
-          Transactions
-        </Text>
-        {transactions.length === 0 ? (
-          <Text variant="bodyMedium" style={styles.emptyText}>
-            No transactions on this card yet.
-          </Text>
-        ) : (
-          transactions.map((item, index) => (
-            <View key={item.id}>
-              <List.Item
-                title={item.category}
-                description={
-                  Number(item.othersOwe) > 0
-                    ? `${item.merchant ? item.merchant + ' · ' : ''}${formatDate(item.date)}\nMy Share ${formatCurrency(item.myShare)} · Others Owe Me ${formatCurrency(item.othersOwe)}`
-                    : `${item.merchant ? item.merchant + ' · ' : ''}${formatDate(item.date)}`
-                }
-                descriptionNumberOfLines={2}
-                right={() => (
-                  <Text variant="titleMedium" style={styles.rowAmount}>
-                    {formatCurrency(item.amount)}
-                  </Text>
-                )}
-              />
-              {index < transactions.length - 1 && <Divider />}
-            </View>
-          ))
-        )}
-
-        <Text variant="titleMedium" style={styles.sectionTitle}>
-          Payments
-        </Text>
-        {payments.length === 0 ? (
-          <Text variant="bodyMedium" style={styles.emptyText}>
-            No payments recorded yet.
-          </Text>
-        ) : (
-          payments.map((item, index) => (
-            <View key={item.id}>
-              <List.Item
-                title={formatCurrency(item.amount)}
-                description={item.bank_account_name ? `Paid from ${item.bank_account_name} · ${formatDate(item.date)}` : formatDate(item.date)}
-                left={(props) => <List.Icon {...props} icon="check-circle-outline" />}
-              />
-              {index < payments.length - 1 && <Divider />}
-            </View>
-          ))
-        )}
-
-        <View style={styles.recurringHeader}>
-          <Text variant="titleMedium" style={styles.sectionTitleNoMargin}>
-            Recurring Payments
-          </Text>
-          <Button compact onPress={() => navigation.navigate('RecurringPayments', { cardId, cardName: card.name })}>
-            Manage
+        <View style={styles.buttonRow}>
+          <Button mode="contained" onPress={openPayDialog} style={styles.payButton} contentStyle={styles.payButtonContent} icon="bank-transfer-out">
+            Pay Card
           </Button>
+          {hasSharedResponsibility && (
+            <Button
+              mode="outlined"
+              onPress={() => navigation.getParent<BottomTabNavigationProp<RootTabParamList>>()?.navigate('Money Owed')}
+              style={styles.secondaryButton}
+              icon="hand-coin-outline"
+            >
+              Money Owed
+            </Button>
+          )}
         </View>
-        {activeRecurring.length === 0 ? (
-          <Text variant="bodyMedium" style={styles.emptyText}>
-            No active recurring payments on this card.
-          </Text>
-        ) : (
-          <View style={styles.recurringSummary}>
-            <View style={styles.summaryCol}>
-              <Text variant="bodySmall" style={styles.mutedLabel}>
-                Total Monthly
-              </Text>
-              <Text variant="titleMedium">{formatCurrency(monthlyEquivalentTotal)}</Text>
-            </View>
-            {nextRecurring && (
-              <View style={styles.summaryCol}>
-                <Text variant="bodySmall" style={styles.mutedLabel}>
-                  Next
-                </Text>
-                <Text variant="titleMedium">
-                  {nextRecurring.name} · {formatDate(nextRecurring.next_date)}
-                </Text>
+
+        <View style={styles.section}>
+          <SectionHeader title="Transactions" />
+          {transactions.length === 0 ? (
+            <EmptyState icon="credit-card-outline" title="No transactions yet" description="Expenses charged to this card will show up here." compact />
+          ) : (
+            transactions.map((item, index) => (
+              <View key={item.id}>
+                <View style={styles.listRow}>
+                  <View style={styles.listRowText}>
+                    <Text variant="bodyLarge" numberOfLines={1} style={{ color: theme.colors.onSurface }}>
+                      {item.merchant || item.category}
+                    </Text>
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }} numberOfLines={2}>
+                      {item.category} · {formatDate(item.date)}
+                      {Number(item.othersOwe) > 0 ? ` · You ${formatCurrency(item.myShare)}` : ''}
+                    </Text>
+                  </View>
+                  <AmountText value={`-${formatCurrency(item.amount)}`} variant="titleSmall" />
+                </View>
+                {index < transactions.length - 1 && <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />}
               </View>
-            )}
-          </View>
-        )}
+            ))
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <SectionHeader title="Payments" />
+          {payments.length === 0 ? (
+            <EmptyState icon="check-circle-outline" title="No payments yet" description="Payments toward this card will show up here." compact />
+          ) : (
+            payments.map((item, index) => (
+              <View key={item.id}>
+                <View style={styles.listRow}>
+                  <View style={styles.listRowText}>
+                    <Text variant="bodyLarge" style={{ color: theme.colors.onSurface }}>
+                      Payment
+                    </Text>
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                      {item.bank_account_name ? `From ${item.bank_account_name} · ` : ''}
+                      {formatDate(item.date)}
+                    </Text>
+                  </View>
+                  <AmountText value={formatCurrency(item.amount)} variant="titleSmall" tone="positive" />
+                </View>
+                {index < payments.length - 1 && <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />}
+              </View>
+            ))
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <SectionHeader title="Recurring Payments" actionLabel="Manage" onActionPress={() => navigation.navigate('RecurringPayments', { cardId, cardName: card.name })} />
+          {activeRecurring.length === 0 ? (
+            <EmptyState icon="calendar-sync-outline" title="No recurring payments" description="Add subscriptions or bills charged to this card." compact />
+          ) : (
+            <View style={styles.recurringSummary}>
+              <View>
+                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                  Total monthly
+                </Text>
+                <AmountText value={formatCurrency(monthlyEquivalentTotal)} variant="titleMedium" />
+              </View>
+              {nextRecurring && (
+                <View style={styles.recurringNext}>
+                  <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                    Next
+                  </Text>
+                  <Text variant="titleMedium" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
+                    {nextRecurring.name} · {formatDate(nextRecurring.next_date)}
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+        </View>
       </ScrollView>
       </DismissKeyboardView>
 
@@ -347,25 +359,25 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
         <Dialog visible={isPayDialogVisible} onDismiss={() => setPayDialogVisible(false)}>
           <Dialog.Title>Pay Credit Card</Dialog.Title>
           <Dialog.Content>
-            <Text variant="bodySmall" style={styles.mutedLabel}>
+            <Text variant="bodySmall" style={[styles.mutedLabel, { color: theme.colors.onSurfaceVariant }]}>
               Card Balance: {formatCurrency(card.unpaid)}
             </Text>
-            {Number(card.othersOwe) > 0 && (
-              <Text variant="bodySmall" style={styles.mutedLabel}>
-                My Responsibility {formatCurrency(card.myResponsibility)} · Others Owe Me {formatCurrency(card.othersOwe)}
+            {hasSharedResponsibility && (
+              <Text variant="bodySmall" style={[styles.mutedLabel, { color: theme.colors.onSurfaceVariant }]}>
+                You owe {formatCurrency(card.myResponsibility)} · Others owe {formatCurrency(card.othersOwe)}
               </Text>
             )}
-            <TextInput
+            <AppTextInput
               label="Payment Amount"
               value={payAmount}
               onChangeText={setPayAmount}
               keyboardType="decimal-pad"
               inputAccessoryViewID={DONE_ACCESSORY_ID}
-              left={<TextInput.Affix text="₱" />}
+              left={<AppTextInput.Affix text="₱" />}
               style={[styles.dialogField, styles.amountFieldSpacing]}
             />
 
-            {Number(card.othersOwe) > 0 && (
+            {hasSharedResponsibility && (
               <View style={styles.payWhatIOweRow}>
                 <Button mode="outlined" compact onPress={() => setPayAmount(card.payWhatIOwe)} style={styles.payWhatIOweButton}>
                   Pay What I Owe ({formatCurrency(card.payWhatIOwe)})
@@ -377,7 +389,7 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
               Pay From
             </Text>
             {accounts.length === 0 ? (
-              <Text variant="bodySmall" style={styles.mutedLabel}>
+              <Text variant="bodySmall" style={[styles.mutedLabel, { color: theme.colors.onSurfaceVariant }]}>
                 No accounts yet. Add one from the Accounts tab.
               </Text>
             ) : (
@@ -400,7 +412,7 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
 
             {selectedAccount && payAccountDetail && (
               <View style={styles.payAccountSummary}>
-                <Text variant="bodySmall" style={styles.mutedLabel}>
+                <Text variant="bodySmall" style={[styles.mutedLabel, { color: theme.colors.onSurfaceVariant }]}>
                   Current: {formatCurrency(payAccountDetail.account.balance)} · Available: {formatCurrency(payAccountDetail.account.available)}
                 </Text>
 
@@ -409,13 +421,13 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
                 </Text>
                 <RadioButton.Group value={paySource} onValueChange={(value) => setPaySource(value as PaySource)}>
                   <RadioButton.Item label="Available Money" value="available" style={styles.radioItem} />
-                  <RadioButton.Item label="Reserved Money" value="reservation" style={styles.radioItem} />
+                  <RadioButton.Item label="Set Aside Money" value="reservation" style={styles.radioItem} />
                 </RadioButton.Group>
 
                 {paySource === 'reservation' && (
                   <View style={styles.reservationPicker}>
                     {payAccountDetail.reservations.filter((r) => r.status === 'reserved').length === 0 ? (
-                      <Text variant="bodySmall" style={styles.mutedLabel}>
+                      <Text variant="bodySmall" style={[styles.mutedLabel, { color: theme.colors.onSurfaceVariant }]}>
                         No active reservations on this account.
                       </Text>
                     ) : (
@@ -460,126 +472,128 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
 
 const styles = StyleSheet.create({
   content: {
-    padding: 16,
-    paddingBottom: 32,
+    paddingHorizontal: screenPadding,
+    paddingTop: spacing.base,
+    paddingBottom: spacing.xxl,
   },
   centered: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
+    padding: spacing.xl,
   },
   summary: {
-    alignItems: 'center',
-    marginBottom: 24,
+    borderRadius: radii.cardLarge,
+    padding: spacing.xl,
+    marginBottom: spacing.base,
+  },
+  summaryTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
   },
   bank: {
-    opacity: 0.6,
-    marginBottom: 4,
+    marginBottom: spacing.xs,
+  },
+  unpaidAmount: {
+    marginTop: spacing.base,
   },
   unpaidLabel: {
-    opacity: 0.6,
     marginTop: 2,
   },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 12,
-  },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statusText: {
-    color: '#FFFFFF',
+  summaryDivider: {
+    height: StyleSheet.hairlineWidth,
+    opacity: 0.14,
+    marginTop: spacing.base,
+    marginBottom: spacing.base,
   },
   responsibilityRow: {
     flexDirection: 'row',
-    gap: 32,
-    marginTop: 16,
+    justifyContent: 'space-between',
   },
-  summaryCol: {
-    alignItems: 'center',
+  responsibilityRight: {
+    alignItems: 'flex-end',
   },
-  payWhatIOweRow: {
-    marginBottom: 16,
-  },
-  payWhatIOweButton: {
-    marginTop: 8,
-    alignSelf: 'flex-start',
+  dueText: {
+    marginTop: spacing.base,
   },
   buttonRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 12,
-    marginTop: 16,
+    gap: spacing.sm,
+    marginBottom: spacing.xl,
   },
-  actionButton: {
-    minWidth: 0,
+  payButton: {
+    flex: 1,
+    borderRadius: radii.button,
   },
-  mutedLabel: {
-    opacity: 0.6,
+  payButtonContent: {
+    height: 48,
   },
-  dialogLabel: {
-    marginBottom: 8,
-    marginTop: 4,
+  secondaryButton: {
+    borderRadius: radii.button,
   },
-  sectionTitle: {
-    marginTop: 8,
-    marginBottom: 4,
+  section: {
+    marginBottom: spacing.xl,
   },
-  sectionTitleNoMargin: {
-    marginTop: 0,
-    marginBottom: 0,
-  },
-  recurringHeader: {
+  listRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 16,
+    paddingVertical: spacing.sm + 2,
+    gap: spacing.md,
+  },
+  listRowText: {
+    flex: 1,
   },
   recurringSummary: {
     flexDirection: 'row',
-    gap: 32,
-    marginTop: 8,
-    paddingVertical: 4,
+    gap: spacing.xxl,
+    marginTop: spacing.xs,
   },
-  emptyText: {
-    opacity: 0.6,
-    paddingVertical: 8,
+  recurringNext: {
+    flex: 1,
   },
-  rowAmount: {
-    alignSelf: 'center',
+  mutedLabel: {
+    marginBottom: spacing.xs,
+  },
+  dialogLabel: {
+    marginBottom: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  payWhatIOweRow: {
+    marginBottom: spacing.base,
+  },
+  payWhatIOweButton: {
+    marginTop: spacing.sm,
+    alignSelf: 'flex-start',
   },
   headerActions: {
     flexDirection: 'row',
   },
   dialogField: {
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   amountFieldSpacing: {
-    marginTop: 8,
+    marginTop: spacing.sm,
   },
   payAccountSummary: {
-    marginTop: 12,
+    marginTop: spacing.md,
   },
   radioItem: {
     paddingHorizontal: 0,
   },
   reservationPicker: {
-    marginLeft: 8,
+    marginLeft: spacing.sm,
   },
   error: {
-    marginTop: 4,
+    marginTop: spacing.xs,
   },
   errorText: {
-    marginBottom: 12,
+    marginBottom: spacing.md,
     textAlign: 'center',
   },
   retryButton: {
-    marginTop: 4,
+    marginTop: spacing.xs,
   },
 });

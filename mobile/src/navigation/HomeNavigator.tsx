@@ -42,7 +42,7 @@ export default function HomeNavigator() {
         name="HomeMain"
         component={HomeScreen}
         options={{
-          title: 'Budget Tracker',
+          title: 'Pocketcakes',
           headerRight: () => (
             <View style={{ flexDirection: 'row' }}>
               {__DEV__ && (

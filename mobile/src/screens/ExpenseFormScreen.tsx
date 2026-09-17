@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
-import { Button, Chip, Dialog, Divider, IconButton, List, Menu, Portal, Text, TextInput, useTheme } from 'react-native-paper';
+import { Button, Chip, Dialog, Divider, IconButton, List, Menu, Portal, Text, useTheme } from 'react-native-paper';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -15,6 +15,9 @@ import { formatCurrency, todayISODate } from '../utils/format';
 import DateField from '../components/DateField';
 import DismissKeyboardView from '../components/DismissKeyboardView';
 import DoneAccessory, { DONE_ACCESSORY_ID } from '../components/DoneAccessory';
+import AppTextInput from '../components/AppTextInput';
+import { spacing, screenPadding } from '../theme/spacing';
+import { radii } from '../theme/radii';
 import type { ExpensesStackParamList } from '../navigation/ExpensesNavigator';
 
 type Props = NativeStackScreenProps<ExpensesStackParamList, 'ExpenseForm'>;
@@ -225,7 +228,7 @@ export default function ExpenseFormScreen({ route, navigation }: Props) {
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <DismissKeyboardView>
-    <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <ScrollView style={{ backgroundColor: theme.colors.background }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       {scanned?.ocrFailed && (
         <Text
           variant="bodySmall"
@@ -238,13 +241,13 @@ export default function ExpenseFormScreen({ route, navigation }: Props) {
         </Text>
       )}
 
-      <TextInput
+      <AppTextInput
         label="Amount"
         value={amount}
         onChangeText={setAmount}
         keyboardType="decimal-pad"
         inputAccessoryViewID={DONE_ACCESSORY_ID}
-        left={<TextInput.Affix text="₱" />}
+        left={<AppTextInput.Affix text="₱" />}
         style={styles.field}
       />
 
@@ -264,7 +267,7 @@ export default function ExpenseFormScreen({ route, navigation }: Props) {
       </Text>
       <DateField value={date} onChange={setDate} />
 
-      <TextInput label="Merchant (optional)" value={merchant} onChangeText={setMerchant} style={styles.field} />
+      <AppTextInput label="Merchant (optional)" value={merchant} onChangeText={setMerchant} style={styles.field} />
 
       <Text variant="labelLarge" style={styles.label}>
         Payment Method
@@ -430,25 +433,25 @@ export default function ExpenseFormScreen({ route, navigation }: Props) {
             </Button>
           </View>
 
-          <TextInput
+          <AppTextInput
             label="My Share"
             value={myShareText}
             onChangeText={setMyShareText}
             keyboardType="decimal-pad"
             inputAccessoryViewID={DONE_ACCESSORY_ID}
-            left={<TextInput.Affix text="₱" />}
+            left={<AppTextInput.Affix text="₱" />}
             style={styles.dialogField}
           />
 
           {splitRows.map((row) => (
             <View key={row.personId} style={styles.splitRow}>
-              <TextInput
+              <AppTextInput
                 label={row.name}
                 value={row.amountText}
                 onChangeText={(text) => setSplitRows((rows) => rows.map((r) => (r.personId === row.personId ? { ...r, amountText: text } : r)))}
                 keyboardType="decimal-pad"
                 inputAccessoryViewID={DONE_ACCESSORY_ID}
-                left={<TextInput.Affix text="₱" />}
+                left={<AppTextInput.Affix text="₱" />}
                 style={styles.splitRowInput}
               />
               <IconButton icon="close" onPress={() => removePersonFromSplit(row.personId)} />
@@ -492,7 +495,7 @@ export default function ExpenseFormScreen({ route, navigation }: Props) {
               <Divider style={styles.addPersonDivider} />
             </>
           )}
-          <TextInput
+          <AppTextInput
             label="New person's name"
             value={newPersonName}
             onChangeText={setNewPersonName}

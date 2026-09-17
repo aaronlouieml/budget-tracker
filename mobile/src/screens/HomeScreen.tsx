@@ -1,7 +1,8 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
-import { ActivityIndicator, Button, Card, Checkbox, Chip, Dialog, Divider, IconButton, List, Portal, Text, useTheme } from 'react-native-paper';
+import { ActivityIndicator, Button, Checkbox, Chip, Dialog, Divider, IconButton, Portal, Text, TouchableRipple, useTheme } from 'react-native-paper';
 import { PieChart } from 'react-native-chart-kit';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import type { CompositeScreenProps } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -17,13 +18,20 @@ import {
 import { ServiceError } from '../services/errors';
 import { PAYMENT_METHODS } from '../constants/expenseOptions';
 import { colorForCategory } from '../constants/categoryColors';
-import { STATUS_COLORS, STATUS_LABELS } from '../constants/cardStatus';
-import { formatCurrency, formatDate } from '../utils/format';
+import { formatCurrency, formatDate, dateGroupLabel } from '../utils/format';
 import { useChartTheme } from '../hooks/useChartTheme';
 import { creditCardService, type CreditCard } from '../services/creditCardService';
 import { bankAccountService, type BankAccount } from '../services/bankAccountService';
 import type { HomeStackParamList } from '../navigation/HomeNavigator';
 import type { RootTabParamList } from '../navigation/AppNavigator';
+import SectionHeader from '../components/SectionHeader';
+import TransactionRow from '../components/TransactionRow';
+import AmountText from '../components/AmountText';
+import EmptyState from '../components/EmptyState';
+import SliceRing from '../components/SliceRing';
+import { spacing, screenPadding } from '../theme/spacing';
+import { radii } from '../theme/radii';
+import { tabularNumberStyle } from '../theme/typography';
 
 type Props = CompositeScreenProps<NativeStackScreenProps<HomeStackParamList, 'HomeMain'>, BottomTabScreenProps<RootTabParamList>>;
 
@@ -33,7 +41,7 @@ const SECTION_LABELS: Record<HomeSectionKey, string> = {
   accountOverview: 'Account Overview',
   recentExpenses: 'Recent Expenses',
   upcomingDue: 'Upcoming Due Dates',
-  reservedMoney: 'Reserved Money',
+  reservedMoney: 'Set Aside',
   monthlySummary: 'Monthly Summary',
   spendingByCategory: 'Spending by Category',
 };
@@ -43,6 +51,13 @@ const PERIOD_OPTIONS: { value: RecentExpensesPeriod; label: string }[] = [
   { value: 'week', label: 'This Week' },
   { value: 'month', label: 'This Month' },
 ];
+
+function greeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
 
 export default function HomeScreen({ navigation }: Props) {
   const theme = useTheme();
@@ -97,9 +112,24 @@ export default function HomeScreen({ navigation }: Props) {
     await load();
   }
 
+  const groupedExpenses = useMemo(() => {
+    if (!data) return [];
+    const groups: { label: string; items: HomeData['recentExpenses'] }[] = [];
+    for (const item of data.recentExpenses.slice(0, 8)) {
+      const label = dateGroupLabel(item.date);
+      const lastGroup = groups[groups.length - 1];
+      if (lastGroup && lastGroup.label === label) {
+        lastGroup.items.push(item);
+      } else {
+        groups.push({ label, items: [item] });
+      }
+    }
+    return groups;
+  }, [data]);
+
   if (isLoading) {
     return (
-      <View style={styles.centered}>
+      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
         <ActivityIndicator size="large" />
       </View>
     );
@@ -107,7 +137,7 @@ export default function HomeScreen({ navigation }: Props) {
 
   if (error || !data) {
     return (
-      <View style={styles.centered}>
+      <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
         <Text variant="bodyMedium" style={[styles.errorText, { color: theme.colors.error }]}>
           {error ?? 'Unable to load your overview.'}
         </Text>
@@ -119,6 +149,11 @@ export default function HomeScreen({ navigation }: Props) {
   }
 
   const visible = new Set(data.visibleSections);
+  // "Your Pocket" is the whole - your slice (available) plus what's set
+  // aside (reserved) - both already-computed totals, just summed for
+  // display. Credit card debt is a separate liability, not part of the
+  // pocket, so it's shown as its own line below.
+  const pocketTotal = Number(data.overview.totalAvailable) + Number(data.overview.totalReserved);
   const pieData = data.categoryTotals.map((c) => ({
     name: c.category,
     amount: Number(c.total),
@@ -129,282 +164,281 @@ export default function HomeScreen({ navigation }: Props) {
 
   return (
     <>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.snapshotRow}>
-          <Card style={styles.snapshotCard}>
-            <Card.Content style={styles.snapshotContent}>
-              <Text variant="bodySmall" style={styles.mutedLabel}>
-                Available
-              </Text>
-              <Text variant="titleLarge">{formatCurrency(data.overview.totalAvailable)}</Text>
-            </Card.Content>
-          </Card>
-          <Card style={styles.snapshotCard}>
-            <Card.Content style={styles.snapshotContent}>
-              <Text variant="bodySmall" style={styles.mutedLabel}>
-                Reserved
-              </Text>
-              <Text variant="titleLarge">{formatCurrency(data.overview.totalReserved)}</Text>
-            </Card.Content>
-          </Card>
-          <Card style={styles.snapshotCard}>
-            <Card.Content style={styles.snapshotContent}>
-              <Text variant="bodySmall" style={styles.mutedLabel}>
-                Credit Cards
-              </Text>
-              <Text variant="titleLarge">{formatCurrency(data.overview.totalCreditCardOutstanding)}</Text>
-            </Card.Content>
-          </Card>
-          <Card style={styles.snapshotCard}>
-            <Card.Content style={styles.snapshotContent}>
-              <Text variant="bodySmall" style={styles.mutedLabel}>
-                Due Soon
-              </Text>
-              <Text variant="titleLarge">{data.overview.dueSoonCount}</Text>
-            </Card.Content>
-          </Card>
+      <ScrollView style={{ backgroundColor: theme.colors.background }} contentContainerStyle={styles.content}>
+        <View style={styles.greetingRow}>
+          <Text variant="headlineSmall" style={{ color: theme.colors.onBackground }}>
+            {greeting()} 👋
+          </Text>
+          <IconButton icon="tune-variant" size={20} onPress={openCustomize} accessibilityLabel="Customize sections" />
         </View>
 
-        <View style={styles.quickLinksRow}>
-          <Button mode="outlined" compact icon="hand-coin-outline" onPress={() => navigation.navigate('Money Owed')} style={styles.quickLinkButton}>
-            Money Owed
-          </Button>
-          <Button mode="outlined" compact icon="calendar-clock-outline" onPress={() => navigation.navigate('SavedPlans')} style={styles.quickLinkButton}>
-            Saved Plans
-          </Button>
-          <Button mode="outlined" compact icon="rocket-launch-outline" onPress={() => navigation.navigate('Onboarding')} style={styles.quickLinkButton}>
-            Set Me Up
-          </Button>
-          <IconButton icon="tune-variant" onPress={openCustomize} accessibilityLabel="Customize sections" />
+        <View style={[styles.heroCard, { backgroundColor: theme.colors.primary }]}>
+          <View style={styles.heroTopRow}>
+            <View style={styles.heroTopText}>
+              <Text variant="labelLarge" style={[styles.heroLabel, { color: theme.colors.inversePrimary }]}>
+                Your Pocket
+              </Text>
+              <Text variant="displaySmall" style={[tabularNumberStyle, styles.heroAmount, { color: theme.colors.onPrimary }]}>
+                {formatCurrency(pocketTotal)}
+              </Text>
+            </View>
+            <SliceRing
+              availableFraction={pocketTotal > 0 ? Number(data.overview.totalAvailable) / pocketTotal : 1}
+              availableColor={theme.colors.tertiary}
+              setAsideColor="rgba(255,255,255,0.22)"
+            />
+          </View>
+          <View style={[styles.heroDivider, { backgroundColor: theme.colors.onPrimary, opacity: 0.14 }]} />
+          <View style={styles.heroStatsRow}>
+            <View style={styles.heroStat}>
+              <View style={[styles.heroDot, { backgroundColor: theme.colors.tertiary }]} />
+              <Text variant="bodySmall" style={[styles.heroStatLabel, { color: theme.colors.inversePrimary }]}>
+                Your Slice
+              </Text>
+              <Text variant="titleSmall" style={[tabularNumberStyle, { color: theme.colors.onPrimary }]}>
+                {formatCurrency(data.overview.totalAvailable)}
+              </Text>
+            </View>
+            <View style={styles.heroStat}>
+              <View style={[styles.heroDot, { backgroundColor: 'rgba(255,255,255,0.5)' }]} />
+              <Text variant="bodySmall" style={[styles.heroStatLabel, { color: theme.colors.inversePrimary }]}>
+                Set Aside
+              </Text>
+              <Text variant="titleSmall" style={[tabularNumberStyle, { color: theme.colors.onPrimary }]}>
+                {formatCurrency(data.overview.totalReserved)}
+              </Text>
+            </View>
+          </View>
+          {Number(data.overview.totalCreditCardOutstanding) > 0 && (
+            <View style={styles.heroCardsRow}>
+              <View style={styles.heroCardsLabelRow}>
+                <MaterialCommunityIcons name="credit-card-outline" size={14} color={theme.colors.inversePrimary} />
+                <Text variant="bodySmall" style={{ color: theme.colors.inversePrimary }}>
+                  Credit Cards{data.overview.dueSoonCount > 0 ? ` · ${data.overview.dueSoonCount} due soon` : ''}
+                </Text>
+              </View>
+              <Text variant="titleSmall" style={[tabularNumberStyle, { color: theme.colors.onPrimary }]}>
+                {formatCurrency(data.overview.totalCreditCardOutstanding)}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.quickActionsRow}>
+          <QuickAction icon="plus" label="Expense" primary onPress={() => navigation.navigate('Expenses')} />
+          <QuickAction icon="hand-coin-outline" label="Money Owed" onPress={() => navigation.navigate('Money Owed')} />
+          <QuickAction icon="calendar-clock-outline" label="Saved Plans" onPress={() => navigation.navigate('SavedPlans')} />
+          <QuickAction icon="rocket-launch-outline" label="Set Me Up" onPress={() => navigation.navigate('Onboarding')} />
         </View>
 
         {HOME_SECTION_KEYS.filter((key) => visible.has(key)).map((key) => (
-          <View key={key}>
-            {key === 'accountOverview' && (
-              <Card style={styles.card}>
-                <Card.Title
-                  title="Accounts"
-                  right={() => (
-                    <Button compact onPress={() => navigation.navigate('Accounts')}>
-                      See All
-                    </Button>
-                  )}
-                />
-                <Card.Content style={styles.noPadding}>
-                  {accounts.length === 0 && cards.length === 0 ? (
-                    <Text variant="bodyMedium" style={styles.emptyText}>
-                      No accounts yet.
-                    </Text>
-                  ) : (
-                    <>
-                      {accounts.map((a) => (
-                        <List.Item
-                          key={a.id}
-                          title={a.name}
-                          description={`Current ${formatCurrency(a.balance)} · Reserved ${formatCurrency(a.reserved)}`}
-                          right={() => (
-                            <View style={styles.rowRightStack}>
-                              <Text variant="bodySmall" style={styles.mutedLabel}>
-                                Available
-                              </Text>
-                              <Text variant="titleMedium">{formatCurrency(a.available)}</Text>
-                            </View>
-                          )}
-                        />
+          <View key={key} style={styles.section}>
+            {key === 'recentExpenses' && (
+              <>
+                <SectionHeader title="Recent Expenses" actionLabel="See all" onActionPress={() => navigation.navigate('Expenses')} />
+                <View style={styles.periodRow}>
+                  {PERIOD_OPTIONS.map((p) => (
+                    <Chip
+                      key={p.value}
+                      selected={data.recentExpensesPeriod === p.value}
+                      onPress={() => handleChangePeriod(p.value)}
+                      mode={data.recentExpensesPeriod === p.value ? 'flat' : 'outlined'}
+                      compact
+                      style={styles.periodChip}
+                    >
+                      {p.label}
+                    </Chip>
+                  ))}
+                </View>
+                {groupedExpenses.length === 0 ? (
+                  <EmptyState icon="cash-remove" title="No expenses yet" description="Start tracking your spending to see it appear here." compact />
+                ) : (
+                  groupedExpenses.map((group) => (
+                    <View key={group.label} style={styles.dayGroup}>
+                      <Text variant="labelLarge" style={[styles.dayLabel, { color: theme.colors.onSurfaceVariant }]}>
+                        {group.label}
+                      </Text>
+                      {group.items.map((item, index) => (
+                        <View key={item.id}>
+                          <TransactionRow
+                            category={item.category}
+                            title={item.merchant || item.category}
+                            subtitle={`${item.category}${item.payment_method ? ' · ' + (PAYMENT_METHOD_LABELS[item.payment_method] ?? item.payment_method) : ''}`}
+                            amountText={`-${formatCurrency(item.amount)}`}
+                          />
+                          {index < group.items.length - 1 && <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />}
+                        </View>
                       ))}
-                      {cards.map((c) => (
-                        <List.Item
-                          key={c.id}
-                          title={c.name}
-                          description={`Due ${formatDate(c.next_due_date)}${Number(c.othersOwe) > 0 ? ` · Others Owe ${formatCurrency(c.othersOwe)}` : ''}`}
-                          right={() => (
-                            <View style={styles.rowRightStack}>
-                              <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[c.status] }]}>
-                                <Text variant="labelSmall" style={styles.statusText}>
-                                  {STATUS_LABELS[c.status]}
-                                </Text>
-                              </View>
-                              <Text variant="titleMedium">{formatCurrency(c.unpaid)}</Text>
-                            </View>
-                          )}
-                        />
-                      ))}
-                    </>
-                  )}
-                </Card.Content>
-              </Card>
+                    </View>
+                  ))
+                )}
+              </>
             )}
 
-            {key === 'recentExpenses' && (
-              <Card style={styles.card}>
-                <Card.Title
-                  title="Recent Expenses"
-                  right={() => (
-                    <Button compact onPress={() => navigation.navigate('Expenses')}>
-                      See All
-                    </Button>
-                  )}
-                />
-                <Card.Content style={styles.noPadding}>
-                  <View style={styles.periodRow}>
-                    {PERIOD_OPTIONS.map((p) => (
-                      <Chip key={p.value} selected={data.recentExpensesPeriod === p.value} onPress={() => handleChangePeriod(p.value)} mode={data.recentExpensesPeriod === p.value ? 'flat' : 'outlined'} compact>
-                        {p.label}
-                      </Chip>
+            {key === 'accountOverview' && (
+              <>
+                <SectionHeader title="Accounts" actionLabel="See all" onActionPress={() => navigation.navigate('Accounts')} />
+                {accounts.length === 0 && cards.length === 0 ? (
+                  <EmptyState icon="bank-outline" title="No accounts yet" description="Add a bank account, cash, or e-wallet to get started." compact />
+                ) : (
+                  <View style={styles.listGroup}>
+                    {accounts.map((a, index) => (
+                      <View key={a.id}>
+                        <View style={styles.accountRow}>
+                          <View style={styles.accountRowText}>
+                            <Text variant="bodyLarge" numberOfLines={1} style={{ color: theme.colors.onSurface }}>
+                              {a.name}
+                            </Text>
+                            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                              Available
+                            </Text>
+                          </View>
+                          <AmountText value={formatCurrency(a.available)} variant="titleSmall" />
+                        </View>
+                        {(index < accounts.length - 1 || cards.length > 0) && <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />}
+                      </View>
+                    ))}
+                    {cards.map((c, index) => (
+                      <View key={c.id}>
+                        <View style={styles.accountRow}>
+                          <View style={styles.accountRowText}>
+                            <Text variant="bodyLarge" numberOfLines={1} style={{ color: theme.colors.onSurface }}>
+                              {c.name}
+                            </Text>
+                            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                              Due {formatDate(c.next_due_date)}
+                            </Text>
+                          </View>
+                          <AmountText value={formatCurrency(c.unpaid)} variant="titleSmall" />
+                        </View>
+                        {index < cards.length - 1 && <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />}
+                      </View>
                     ))}
                   </View>
-                  {data.recentExpenses.length === 0 ? (
-                    <Text variant="bodyMedium" style={styles.emptyText}>
-                      No expenses in this period.
-                    </Text>
-                  ) : (
-                    data.recentExpenses.slice(0, 8).map((item, index) => (
-                      <View key={item.id}>
-                        <List.Item
-                          title={item.category}
-                          description={`${item.merchant ? item.merchant + ' · ' : ''}${formatDate(item.date)}${
-                            item.payment_method ? ' · ' + (PAYMENT_METHOD_LABELS[item.payment_method] ?? item.payment_method) : ''
-                          }`}
-                          right={() => (
-                            <Text variant="titleMedium" style={styles.rowAmount}>
-                              {formatCurrency(item.amount)}
-                            </Text>
-                          )}
-                        />
-                        {index < Math.min(data.recentExpenses.length, 8) - 1 && <Divider />}
-                      </View>
-                    ))
-                  )}
-                </Card.Content>
-              </Card>
+                )}
+              </>
             )}
 
             {key === 'upcomingDue' && (
-              <Card style={styles.card}>
-                <Card.Title title="Upcoming" />
-                <Card.Content style={styles.noPadding}>
-                  {data.upcoming.length === 0 ? (
-                    <Text variant="bodyMedium" style={styles.emptyText}>
-                      Nothing due soon.
-                    </Text>
-                  ) : (
-                    data.upcoming.map((item, index) => (
+              <>
+                <SectionHeader title="Upcoming" subtitle={data.overview.dueSoonCount > 0 ? `${data.overview.dueSoonCount} due soon` : undefined} />
+                {data.upcoming.length === 0 ? (
+                  <EmptyState icon="calendar-check-outline" title="Nothing due soon" description="Credit card dues and recurring payments will show up here." compact />
+                ) : (
+                  <View style={styles.listGroup}>
+                    {data.upcoming.map((item, index) => (
                       <View key={item.id}>
-                        <List.Item
-                          title={item.label}
-                          description={`${item.detail} · ${formatDate(item.date)}`}
-                          right={() => (
-                            <Text variant="titleMedium" style={styles.rowAmount}>
-                              {formatCurrency(item.amount)}
+                        <View style={styles.accountRow}>
+                          <View style={styles.accountRowText}>
+                            <Text variant="bodyLarge" numberOfLines={1} style={{ color: theme.colors.onSurface }}>
+                              {item.label}
                             </Text>
-                          )}
-                        />
-                        {index < data.upcoming.length - 1 && <Divider />}
+                            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                              {item.detail} · {formatDate(item.date)}
+                            </Text>
+                          </View>
+                          <AmountText value={formatCurrency(item.amount)} variant="titleSmall" />
+                        </View>
+                        {index < data.upcoming.length - 1 && <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />}
                       </View>
-                    ))
-                  )}
-                </Card.Content>
-              </Card>
+                    ))}
+                  </View>
+                )}
+              </>
             )}
 
             {key === 'reservedMoney' && (
-              <Card style={styles.card}>
-                <Card.Title
-                  title="Reserved Money"
-                  right={() => (
-                    <Button compact onPress={() => navigation.navigate('SavedPlans')}>
-                      Saved Plans
-                    </Button>
-                  )}
+              <>
+                <SectionHeader
+                  title="Set Aside"
+                  subtitle={data.reservations.length > 0 ? `${formatCurrency(data.overview.totalReserved)} set aside` : 'Save a slice for later.'}
+                  actionLabel="Saved Plans"
+                  onActionPress={() => navigation.navigate('SavedPlans')}
                 />
-                <Card.Content style={styles.noPadding}>
-                  {data.reservations.length === 0 ? (
-                    <Text variant="bodyMedium" style={styles.emptyText}>
-                      No active reservations.
-                    </Text>
-                  ) : (
-                    data.reservations.map((r, index) => (
+                {data.reservations.length === 0 ? (
+                  <EmptyState icon="lock-outline" title="Nothing set aside" description="Save a slice for rent, bills, or a credit card payment." compact />
+                ) : (
+                  <View style={styles.listGroup}>
+                    {data.reservations.map((r, index) => (
                       <View key={r.id}>
-                        <List.Item
-                          title={r.name}
-                          description={r.accountName}
-                          right={() => (
-                            <Text variant="titleMedium" style={styles.rowAmount}>
-                              {formatCurrency(r.amount)}
+                        <View style={styles.accountRow}>
+                          <View style={styles.accountRowText}>
+                            <Text variant="bodyLarge" numberOfLines={1} style={{ color: theme.colors.onSurface }}>
+                              {r.name}
                             </Text>
-                          )}
-                        />
-                        {index < data.reservations.length - 1 && <Divider />}
+                            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                              {r.accountName}
+                            </Text>
+                          </View>
+                          <AmountText value={formatCurrency(r.amount)} variant="titleSmall" tone="muted" />
+                        </View>
+                        {index < data.reservations.length - 1 && <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />}
                       </View>
-                    ))
-                  )}
-                </Card.Content>
-              </Card>
+                    ))}
+                  </View>
+                )}
+              </>
             )}
 
             {key === 'monthlySummary' && (
-              <Card style={styles.card}>
-                <Card.Title title="This Month" />
-                <Card.Content>
-                  <View style={styles.summaryRow}>
-                    <View style={styles.summaryCol}>
-                      <Text variant="bodySmall" style={styles.mutedLabel}>
-                        Spent
-                      </Text>
-                      <Text variant="titleMedium">{formatCurrency(data.monthlySummary.spent)}</Text>
-                    </View>
-                    <View style={styles.summaryCol}>
-                      <Text variant="bodySmall" style={styles.mutedLabel}>
-                        Income
-                      </Text>
-                      <Text variant="titleMedium">{formatCurrency(data.monthlySummary.income)}</Text>
-                    </View>
-                    <View style={styles.summaryCol}>
-                      <Text variant="bodySmall" style={styles.mutedLabel}>
-                        Net
-                      </Text>
-                      <Text variant="titleMedium">{formatCurrency(data.monthlySummary.net)}</Text>
-                    </View>
+              <>
+                <SectionHeader title="This Month" />
+                <View style={styles.summaryRow}>
+                  <View style={styles.summaryCol}>
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                      Spent
+                    </Text>
+                    <AmountText value={formatCurrency(data.monthlySummary.spent)} variant="titleMedium" />
                   </View>
-                </Card.Content>
-              </Card>
+                  <View style={styles.summaryCol}>
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                      Income
+                    </Text>
+                    <AmountText value={formatCurrency(data.monthlySummary.income)} variant="titleMedium" tone="positive" />
+                  </View>
+                  <View style={styles.summaryCol}>
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                      Net
+                    </Text>
+                    <AmountText value={formatCurrency(data.monthlySummary.net)} variant="titleMedium" />
+                  </View>
+                </View>
+              </>
             )}
 
             {key === 'spendingByCategory' && (
-              <Card style={styles.card}>
-                <Card.Title title="Spending by Category" subtitle="This month" />
-                <Card.Content>
-                  {data.categoryTotals.length === 0 ? (
-                    <Text variant="bodyMedium" style={styles.emptyText}>
-                      No expenses yet this month.
-                    </Text>
-                  ) : (
-                    <>
-                      <PieChart
-                        data={pieData}
-                        width={screenWidth - 64}
-                        height={180}
-                        accessor="amount"
-                        backgroundColor="transparent"
-                        paddingLeft="0"
-                        chartConfig={chartConfig}
-                        hasLegend={false}
-                      />
-                      <View style={styles.categoryList}>
-                        {data.categoryTotals.map((c) => (
-                          <View key={c.category} style={styles.categoryRow}>
-                            <View style={styles.categoryLabel}>
-                              <View style={[styles.swatch, { backgroundColor: colorForCategory(c.category) }]} />
-                              <Text variant="bodyMedium">{c.category}</Text>
-                            </View>
-                            <Text variant="bodyMedium">{formatCurrency(c.total)}</Text>
+              <>
+                <SectionHeader title="Spending" subtitle="This month" />
+                {data.categoryTotals.length === 0 ? (
+                  <EmptyState icon="chart-donut" title="No spending yet" description="Categorized expenses will appear here this month." compact />
+                ) : (
+                  <>
+                    <PieChart
+                      data={pieData}
+                      width={screenWidth - screenPadding * 2}
+                      height={170}
+                      accessor="amount"
+                      backgroundColor="transparent"
+                      paddingLeft="0"
+                      chartConfig={chartConfig}
+                      hasLegend={false}
+                    />
+                    <View style={styles.categoryList}>
+                      {data.categoryTotals.map((c) => (
+                        <View key={c.category} style={styles.categoryRow}>
+                          <View style={styles.categoryLabel}>
+                            <View style={[styles.swatch, { backgroundColor: colorForCategory(c.category) }]} />
+                            <Text variant="bodyMedium" style={{ color: theme.colors.onSurface }}>
+                              {c.category}
+                            </Text>
                           </View>
-                        ))}
-                      </View>
-                    </>
-                  )}
-                </Card.Content>
-              </Card>
+                          <AmountText value={formatCurrency(c.total)} variant="bodyMedium" tone="muted" />
+                        </View>
+                      ))}
+                    </View>
+                  </>
+                )}
+              </>
             )}
           </View>
         ))}
@@ -428,96 +462,174 @@ export default function HomeScreen({ navigation }: Props) {
   );
 }
 
+function QuickAction({
+  icon,
+  label,
+  onPress,
+  primary,
+}: {
+  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  label: string;
+  onPress: () => void;
+  primary?: boolean;
+}) {
+  const theme = useTheme();
+  const bg = primary ? theme.colors.primary : theme.colors.surface;
+  const fg = primary ? theme.colors.onPrimary : theme.colors.onSurface;
+
+  return (
+    <TouchableRipple onPress={onPress} style={[styles.quickAction, { backgroundColor: bg, borderColor: theme.colors.outline, borderWidth: primary ? 0 : 1 }]} borderless>
+      <View style={styles.quickActionContent}>
+        <MaterialCommunityIcons name={icon} size={18} color={fg} />
+        <Text variant="labelLarge" style={{ color: fg }} numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
+    </TouchableRipple>
+  );
+}
+
 const styles = StyleSheet.create({
   content: {
-    padding: 16,
-    paddingBottom: 32,
+    paddingHorizontal: screenPadding,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xxl,
   },
   centered: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
+    padding: spacing.xl,
   },
-  snapshotRow: {
+  greetingRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 8,
-  },
-  snapshotCard: {
-    flexBasis: '48%',
-    flexGrow: 1,
-  },
-  snapshotContent: {
-    paddingVertical: 8,
-  },
-  quickLinksRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
   },
-  quickLinkButton: {
-    marginRight: 0,
+  heroCard: {
+    borderRadius: radii.cardLarge,
+    padding: spacing.xl,
+    marginBottom: spacing.lg,
   },
-  mutedLabel: {
-    opacity: 0.6,
+  heroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
   },
-  card: {
-    marginBottom: 12,
+  heroTopText: {
+    flex: 1,
+    paddingRight: spacing.base,
   },
-  noPadding: {
-    paddingHorizontal: 0,
+  heroLabel: {
+    marginBottom: spacing.xs,
   },
-  emptyText: {
-    opacity: 0.6,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+  heroAmount: {
+    marginBottom: 0,
   },
-  rowAmount: {
-    alignSelf: 'center',
+  heroDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginTop: spacing.base,
+    marginBottom: spacing.base,
   },
-  rowRightStack: {
-    alignItems: 'flex-end',
-    justifyContent: 'center',
+  heroStatsRow: {
+    flexDirection: 'row',
+    gap: spacing.xl,
+  },
+  heroStat: {
     gap: 2,
   },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
+  heroDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginBottom: 3,
   },
-  statusText: {
-    color: '#FFFFFF',
+  heroStatLabel: {
+    marginBottom: 1,
+  },
+  heroCardsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.base,
+    paddingTop: spacing.base,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.14)',
+  },
+  heroCardsLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  quickActionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.xl,
+  },
+  quickAction: {
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+  },
+  quickActionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs + 2,
+  },
+  section: {
+    marginBottom: spacing.xl,
   },
   periodRow: {
     flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 16,
-    marginBottom: 8,
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  periodChip: {
+    marginRight: 0,
+  },
+  dayGroup: {
+    marginTop: spacing.xs,
+  },
+  dayLabel: {
+    marginBottom: 2,
+    marginTop: spacing.sm,
+  },
+  listGroup: {
+    marginTop: spacing.xs,
+  },
+  accountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm + 2,
+    gap: spacing.md,
+  },
+  accountRowText: {
+    flex: 1,
   },
   summaryRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
+    marginTop: spacing.xs,
   },
   summaryCol: {
-    alignItems: 'center',
+    gap: 2,
   },
   categoryList: {
-    marginTop: 8,
+    marginTop: spacing.md,
   },
   categoryRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 6,
+    paddingVertical: spacing.xs + 2,
   },
   categoryLabel: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: spacing.sm,
   },
   swatch: {
     width: 10,
@@ -525,10 +637,10 @@ const styles = StyleSheet.create({
     borderRadius: 5,
   },
   errorText: {
-    marginBottom: 12,
+    marginBottom: spacing.md,
     textAlign: 'center',
   },
   retryButton: {
-    marginTop: 4,
+    marginTop: spacing.xs,
   },
 });

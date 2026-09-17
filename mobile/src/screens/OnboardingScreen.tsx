@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
-import { Button, Chip, List, Text, TextInput, useTheme } from 'react-native-paper';
+import { Button, Chip, List, Text, useTheme } from 'react-native-paper';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { bankAccountService, type AccountType } from '../services/bankAccountService';
@@ -11,6 +11,9 @@ import { ACCOUNT_TYPES } from '../constants/accountOptions';
 import { formatCurrency } from '../utils/format';
 import DismissKeyboardView from '../components/DismissKeyboardView';
 import DoneAccessory, { DONE_ACCESSORY_ID } from '../components/DoneAccessory';
+import AppTextInput from '../components/AppTextInput';
+import { spacing, screenPadding } from '../theme/spacing';
+import { radii } from '../theme/radii';
 import type { HomeStackParamList } from '../navigation/HomeNavigator';
 
 type Props = NativeStackScreenProps<HomeStackParamList, 'Onboarding'>;
@@ -114,25 +117,39 @@ export default function OnboardingScreen({ navigation }: Props) {
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <DismissKeyboardView>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView style={{ backgroundColor: theme.colors.background }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.stepHeader}>
-            <Text variant="labelLarge" style={styles.mutedLabel}>
-              Step {step + 1} of {STEP_TITLES.length}
-            </Text>
+            <View style={styles.progressDots}>
+              {STEP_TITLES.map((title, index) => (
+                <View
+                  key={title}
+                  style={[
+                    styles.progressDot,
+                    { backgroundColor: index <= step ? theme.colors.primary : theme.colors.surfaceVariant },
+                    index === step && styles.progressDotActive,
+                  ]}
+                />
+              ))}
+            </View>
             <Button compact onPress={() => navigation.goBack()}>
               Skip
             </Button>
           </View>
-          <Text variant="headlineSmall" style={styles.stepTitle}>
+          <Text variant="headlineSmall" style={[styles.stepTitle, { color: theme.colors.onBackground }]}>
             {STEP_TITLES[step]}
           </Text>
+          {step === 0 && (
+            <Text variant="bodyMedium" style={[styles.welcomeIntro, { color: theme.colors.onSurfaceVariant }]}>
+              A few quick steps and your pocket is ready to go.
+            </Text>
+          )}
 
           {step === 0 && (
             <>
-              <Text variant="bodyMedium" style={styles.stepIntro}>
+              <Text variant="bodyMedium" style={[styles.stepIntro, { color: theme.colors.onSurfaceVariant }]}>
                 Add your bank accounts, cash, or e-wallets with their current balance.
               </Text>
-              <TextInput label="Account Name" value={accountName} onChangeText={setAccountName} style={styles.field} />
+              <AppTextInput label="Account Name" value={accountName} onChangeText={setAccountName} style={styles.field} />
               <View style={styles.chipWrap}>
                 {ACCOUNT_TYPES.map((t) => (
                   <Chip key={t.value} selected={accountType === t.value} onPress={() => setAccountType(t.value)} mode={accountType === t.value ? 'flat' : 'outlined'}>
@@ -140,13 +157,13 @@ export default function OnboardingScreen({ navigation }: Props) {
                   </Chip>
                 ))}
               </View>
-              <TextInput
+              <AppTextInput
                 label="Starting Balance"
                 value={accountBalance}
                 onChangeText={setAccountBalance}
                 keyboardType="decimal-pad"
                 inputAccessoryViewID={DONE_ACCESSORY_ID}
-                left={<TextInput.Affix text="₱" />}
+                left={<AppTextInput.Affix text="₱" />}
                 style={styles.field}
               />
               <Button mode="outlined" onPress={handleAddAccount} loading={isAddingAccount} disabled={isAddingAccount} style={styles.addButton}>
@@ -160,12 +177,12 @@ export default function OnboardingScreen({ navigation }: Props) {
 
           {step === 1 && (
             <>
-              <Text variant="bodyMedium" style={styles.stepIntro}>
+              <Text variant="bodyMedium" style={[styles.stepIntro, { color: theme.colors.onSurfaceVariant }]}>
                 Add your credit cards with their current outstanding balance, if any.
               </Text>
-              <TextInput label="Card Name" value={cardName} onChangeText={setCardName} placeholder="BDO Visa" style={styles.field} />
-              <TextInput label="Bank" value={cardBank} onChangeText={setCardBank} placeholder="BDO" style={styles.field} />
-              <TextInput
+              <AppTextInput label="Card Name" value={cardName} onChangeText={setCardName} placeholder="BDO Visa" style={styles.field} />
+              <AppTextInput label="Bank" value={cardBank} onChangeText={setCardBank} placeholder="BDO" style={styles.field} />
+              <AppTextInput
                 label="Due Date (day of month)"
                 value={cardDueDate}
                 onChangeText={(text) => setCardDueDate(text.replace(/[^0-9]/g, ''))}
@@ -175,13 +192,13 @@ export default function OnboardingScreen({ navigation }: Props) {
                 maxLength={2}
                 style={styles.field}
               />
-              <TextInput
+              <AppTextInput
                 label="Current Outstanding (optional)"
                 value={cardOutstanding}
                 onChangeText={setCardOutstanding}
                 keyboardType="decimal-pad"
                 inputAccessoryViewID={DONE_ACCESSORY_ID}
-                left={<TextInput.Affix text="₱" />}
+                left={<AppTextInput.Affix text="₱" />}
                 style={styles.field}
               />
               <Button mode="outlined" onPress={handleAddCard} loading={isAddingCard} disabled={isAddingCard} style={styles.addButton}>
@@ -195,17 +212,17 @@ export default function OnboardingScreen({ navigation }: Props) {
 
           {step === 2 && (
             <>
-              <Text variant="bodyMedium" style={styles.stepIntro}>
+              <Text variant="bodyMedium" style={[styles.stepIntro, { color: theme.colors.onSurfaceVariant }]}>
                 Add people who owe you money, with any existing balance.
               </Text>
-              <TextInput label="Person Name" value={personName} onChangeText={setPersonName} style={styles.field} />
-              <TextInput
+              <AppTextInput label="Person Name" value={personName} onChangeText={setPersonName} style={styles.field} />
+              <AppTextInput
                 label="Existing Balance Owed (optional)"
                 value={personOwed}
                 onChangeText={setPersonOwed}
                 keyboardType="decimal-pad"
                 inputAccessoryViewID={DONE_ACCESSORY_ID}
-                left={<TextInput.Affix text="₱" />}
+                left={<AppTextInput.Affix text="₱" />}
                 style={styles.field}
               />
               <Button mode="outlined" onPress={handleAddPerson} loading={isAddingPerson} disabled={isAddingPerson} style={styles.addButton}>
@@ -219,8 +236,8 @@ export default function OnboardingScreen({ navigation }: Props) {
 
           {step === 3 && (
             <>
-              <Text variant="bodyMedium" style={styles.stepIntro}>
-                You're all set.
+              <Text variant="bodyMedium" style={[styles.stepIntro, { color: theme.colors.onSurfaceVariant }]}>
+                Your pocket is ready.
               </Text>
               <List.Item title="Accounts added" description={String(addedAccounts.length)} left={(props) => <List.Icon {...props} icon="bank-outline" />} />
               <List.Item title="Credit cards added" description={String(addedCards.length)} left={(props) => <List.Icon {...props} icon="credit-card-outline" />} />
@@ -263,40 +280,53 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
-    paddingBottom: 48,
+    paddingHorizontal: screenPadding,
+    paddingTop: spacing.base,
+    paddingBottom: spacing.xxl,
   },
   stepHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  mutedLabel: {
-    opacity: 0.6,
+  progressDots: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  progressDot: {
+    width: 20,
+    height: 6,
+    borderRadius: radii.pill,
+  },
+  progressDotActive: {
+    width: 28,
   },
   stepTitle: {
-    marginBottom: 4,
+    marginBottom: spacing.xs,
+  },
+  welcomeIntro: {
+    marginBottom: spacing.base,
   },
   stepIntro: {
-    opacity: 0.7,
-    marginBottom: 16,
+    marginBottom: spacing.base,
   },
   field: {
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   chipWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 12,
+    gap: spacing.sm,
+    marginBottom: spacing.md,
   },
   addButton: {
-    marginBottom: 8,
+    marginBottom: spacing.sm,
+    borderRadius: radii.button,
   },
   navRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 24,
+    marginTop: spacing.xl,
   },
   navSpacer: {
     flex: 1,

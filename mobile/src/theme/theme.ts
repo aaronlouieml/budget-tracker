@@ -1,11 +1,29 @@
-import { MD3DarkTheme, MD3LightTheme, adaptNavigationTheme } from 'react-native-paper';
+import { MD3DarkTheme, MD3LightTheme, adaptNavigationTheme, configureFonts } from 'react-native-paper';
 import { DarkTheme as NavigationDarkTheme, DefaultTheme as NavigationDefaultTheme } from '@react-navigation/native';
 
-// Official Material Design 3 baseline colors, adapted for both the
-// Paper component library and React Navigation's headers/tab bar so
-// colors match everywhere in both light and dark mode.
-export const paperLightTheme = MD3LightTheme;
-export const paperDarkTheme = MD3DarkTheme;
+import { darkColors, lightColors } from './colors';
+import { fontConfig } from './typography';
+import { radii } from './radii';
+
+const fonts = configureFonts({ config: fontConfig });
+
+// The app's own light/dark themes, built from the shared color + type
+// tokens instead of Paper's stock Material palette - this is what keeps
+// every screen (which just uses Paper components + `variant="..."`)
+// visually consistent without per-screen styling.
+export const paperLightTheme = {
+  ...MD3LightTheme,
+  roundness: radii.control,
+  colors: { ...MD3LightTheme.colors, ...lightColors },
+  fonts,
+};
+
+export const paperDarkTheme = {
+  ...MD3DarkTheme,
+  roundness: radii.control,
+  colors: { ...MD3DarkTheme.colors, ...darkColors },
+  fonts,
+};
 
 const { LightTheme, DarkTheme } = adaptNavigationTheme({
   reactNavigationLight: NavigationDefaultTheme,
@@ -14,5 +32,11 @@ const { LightTheme, DarkTheme } = adaptNavigationTheme({
   materialDark: paperDarkTheme,
 });
 
-export const navigationLightTheme = LightTheme;
-export const navigationDarkTheme = DarkTheme;
+export const navigationLightTheme = {
+  ...LightTheme,
+  colors: { ...LightTheme.colors, background: lightColors.background, card: lightColors.surface },
+};
+export const navigationDarkTheme = {
+  ...DarkTheme,
+  colors: { ...DarkTheme.colors, background: darkColors.background, card: darkColors.surface },
+};
