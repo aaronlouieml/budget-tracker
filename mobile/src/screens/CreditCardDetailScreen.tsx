@@ -16,19 +16,21 @@ import {
 } from 'react-native-paper';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 
 import { creditCardService, type CreditCardDetail, type PaySource } from '../services/creditCardService';
 import { bankAccountService, type BankAccount, type BankAccountDetail } from '../services/bankAccountService';
+import { recurringPaymentService, type RecurringPayment } from '../services/recurringPaymentService';
 import { ServiceError } from '../services/errors';
 import { STATUS_COLORS, STATUS_LABELS } from '../constants/cardStatus';
 import { formatCurrency, formatDate, todayISODate } from '../utils/format';
 import { confirmDestructive } from '../utils/confirm';
-import DateField from '../components/DateField';
 import DismissKeyboardView from '../components/DismissKeyboardView';
 import DoneAccessory, { DONE_ACCESSORY_ID } from '../components/DoneAccessory';
-import type { CreditCardsStackParamList } from '../navigation/CreditCardsNavigator';
+import type { AccountsStackParamList } from '../navigation/AccountsNavigator';
+import type { RootTabParamList } from '../navigation/AppNavigator';
 
-type Props = NativeStackScreenProps<CreditCardsStackParamList, 'CreditCardDetail'>;
+type Props = NativeStackScreenProps<AccountsStackParamList, 'CreditCardDetail'>;
 
 export default function CreditCardDetailScreen({ route, navigation }: Props) {
   const theme = useTheme();
@@ -38,13 +40,8 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [isPaymentDialogVisible, setPaymentDialogVisible] = useState(false);
-  const [paymentAmount, setPaymentAmount] = useState('');
-  const [paymentDate, setPaymentDate] = useState(todayISODate());
-  const [paymentError, setPaymentError] = useState<string | null>(null);
-  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
-
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
+  const [recurring, setRecurring] = useState<RecurringPayment[]>([]);
   const [isPayDialogVisible, setPayDialogVisible] = useState(false);
   const [payAmount, setPayAmount] = useState('');
   const [payAccountId, setPayAccountId] = useState<string | null>(null);
@@ -77,8 +74,23 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
         .catch(() => {
           // Non-critical: the "Pay from Account" picker just falls back to "no accounts" state.
         });
-    }, [loadDetail])
+      recurringPaymentService
+        .listForCard(cardId)
+        .then(setRecurring)
+        .catch(() => {
+          // Non-critical: the summary section just shows nothing until the next focus.
+        });
+    }, [loadDetail, cardId])
   );
+
+  const activeRecurring = recurring.filter((r) => r.is_active);
+  const monthlyEquivalentTotal = activeRecurring.reduce((sum, r) => {
+    const amount = Number(r.amount);
+    if (r.frequency === 'weekly') return sum + (amount * 52) / 12;
+    if (r.frequency === 'yearly') return sum + amount / 12;
+    return sum + amount;
+  }, 0);
+  const nextRecurring = activeRecurring.slice().sort((a, b) => a.next_date.localeCompare(b.next_date))[0] ?? null;
 
   function handleDelete() {
     if (!detail) return;
@@ -105,33 +117,6 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detail]);
-
-  function openPaymentDialog() {
-    setPaymentAmount('');
-    setPaymentDate(todayISODate());
-    setPaymentError(null);
-    setPaymentDialogVisible(true);
-  }
-
-  async function handleRecordPayment() {
-    const amountValue = Number(paymentAmount);
-    if (!paymentAmount || Number.isNaN(amountValue) || amountValue <= 0) {
-      setPaymentError('Enter a valid amount');
-      return;
-    }
-
-    setIsSubmittingPayment(true);
-    setPaymentError(null);
-    try {
-      await creditCardService.recordPayment(cardId, { amount: amountValue, date: paymentDate });
-      setPaymentDialogVisible(false);
-      await loadDetail();
-    } catch (err) {
-      setPaymentError(err instanceof ServiceError ? err.message : 'Unable to record payment.');
-    } finally {
-      setIsSubmittingPayment(false);
-    }
-  }
 
   function openPayDialog() {
     setPayAmount(detail ? detail.card.unpaid : '');
@@ -258,12 +243,19 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
           )}
 
           <View style={styles.buttonRow}>
-            <Button mode="contained" onPress={openPaymentDialog} style={styles.actionButton} icon="cash-plus">
-              Record Payment
+            <Button mode="contained" onPress={openPayDialog} style={styles.actionButton} icon="bank-transfer-out">
+              Pay Credit Card
             </Button>
-            <Button mode="outlined" onPress={openPayDialog} style={styles.actionButton} icon="bank-transfer-out">
-              Pay from Account
-            </Button>
+            {Number(card.othersOwe) > 0 && (
+              <Button
+                mode="outlined"
+                onPress={() => navigation.getParent<BottomTabNavigationProp<RootTabParamList>>()?.navigate('Money Owed')}
+                style={styles.actionButton}
+                icon="hand-coin-outline"
+              >
+                Money Owed
+              </Button>
+            )}
           </View>
         </View>
 
@@ -315,58 +307,66 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
             </View>
           ))
         )}
+
+        <View style={styles.recurringHeader}>
+          <Text variant="titleMedium" style={styles.sectionTitleNoMargin}>
+            Recurring Payments
+          </Text>
+          <Button compact onPress={() => navigation.navigate('RecurringPayments', { cardId, cardName: card.name })}>
+            Manage
+          </Button>
+        </View>
+        {activeRecurring.length === 0 ? (
+          <Text variant="bodyMedium" style={styles.emptyText}>
+            No active recurring payments on this card.
+          </Text>
+        ) : (
+          <View style={styles.recurringSummary}>
+            <View style={styles.summaryCol}>
+              <Text variant="bodySmall" style={styles.mutedLabel}>
+                Total Monthly
+              </Text>
+              <Text variant="titleMedium">{formatCurrency(monthlyEquivalentTotal)}</Text>
+            </View>
+            {nextRecurring && (
+              <View style={styles.summaryCol}>
+                <Text variant="bodySmall" style={styles.mutedLabel}>
+                  Next
+                </Text>
+                <Text variant="titleMedium">
+                  {nextRecurring.name} · {formatDate(nextRecurring.next_date)}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
       </ScrollView>
       </DismissKeyboardView>
 
       <Portal>
-        <Dialog visible={isPaymentDialogVisible} onDismiss={() => setPaymentDialogVisible(false)}>
-          <Dialog.Title>Record Payment</Dialog.Title>
+        <Dialog visible={isPayDialogVisible} onDismiss={() => setPayDialogVisible(false)}>
+          <Dialog.Title>Pay Credit Card</Dialog.Title>
           <Dialog.Content>
-            <TextInput
-              label="Amount"
-              value={paymentAmount}
-              onChangeText={setPaymentAmount}
-              keyboardType="decimal-pad"
-              inputAccessoryViewID={DONE_ACCESSORY_ID}
-              left={<TextInput.Affix text="₱" />}
-              style={styles.dialogField}
-            />
-            <DateField value={paymentDate} onChange={setPaymentDate} />
-            {paymentError && (
-              <Text style={[styles.error, { color: theme.colors.error }]} variant="bodySmall">
-                {paymentError}
+            <Text variant="bodySmall" style={styles.mutedLabel}>
+              Card Balance: {formatCurrency(card.unpaid)}
+            </Text>
+            {Number(card.othersOwe) > 0 && (
+              <Text variant="bodySmall" style={styles.mutedLabel}>
+                My Responsibility {formatCurrency(card.myResponsibility)} · Others Owe Me {formatCurrency(card.othersOwe)}
               </Text>
             )}
-          </Dialog.Content>
-          <Dialog.Actions>
-            <Button onPress={() => setPaymentDialogVisible(false)} disabled={isSubmittingPayment}>
-              Cancel
-            </Button>
-            <Button onPress={handleRecordPayment} loading={isSubmittingPayment} disabled={isSubmittingPayment}>
-              Save
-            </Button>
-          </Dialog.Actions>
-        </Dialog>
-
-        <Dialog visible={isPayDialogVisible} onDismiss={() => setPayDialogVisible(false)}>
-          <Dialog.Title>Pay from Account</Dialog.Title>
-          <Dialog.Content>
             <TextInput
-              label="Amount"
+              label="Payment Amount"
               value={payAmount}
               onChangeText={setPayAmount}
               keyboardType="decimal-pad"
               inputAccessoryViewID={DONE_ACCESSORY_ID}
               left={<TextInput.Affix text="₱" />}
-              style={styles.dialogField}
+              style={[styles.dialogField, styles.amountFieldSpacing]}
             />
 
             {Number(card.othersOwe) > 0 && (
               <View style={styles.payWhatIOweRow}>
-                <Text variant="bodySmall" style={styles.mutedLabel}>
-                  Outstanding {formatCurrency(card.unpaid)} · My Share {formatCurrency(card.myResponsibility)} · Others Owe Me{' '}
-                  {formatCurrency(card.othersOwe)}
-                </Text>
                 <Button mode="outlined" compact onPress={() => setPayAmount(card.payWhatIOwe)} style={styles.payWhatIOweButton}>
                   Pay What I Owe ({formatCurrency(card.payWhatIOwe)})
                 </Button>
@@ -531,6 +531,22 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 4,
   },
+  sectionTitleNoMargin: {
+    marginTop: 0,
+    marginBottom: 0,
+  },
+  recurringHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 16,
+  },
+  recurringSummary: {
+    flexDirection: 'row',
+    gap: 32,
+    marginTop: 8,
+    paddingVertical: 4,
+  },
   emptyText: {
     opacity: 0.6,
     paddingVertical: 8,
@@ -543,6 +559,9 @@ const styles = StyleSheet.create({
   },
   dialogField: {
     marginBottom: 12,
+  },
+  amountFieldSpacing: {
+    marginTop: 8,
   },
   payAccountSummary: {
     marginTop: 12,

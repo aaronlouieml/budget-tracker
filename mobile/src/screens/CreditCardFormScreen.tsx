@@ -7,9 +7,9 @@ import { creditCardService } from '../services/creditCardService';
 import { ServiceError } from '../services/errors';
 import DismissKeyboardView from '../components/DismissKeyboardView';
 import DoneAccessory, { DONE_ACCESSORY_ID } from '../components/DoneAccessory';
-import type { CreditCardsStackParamList } from '../navigation/CreditCardsNavigator';
+import type { AccountsStackParamList } from '../navigation/AccountsNavigator';
 
-type Props = NativeStackScreenProps<CreditCardsStackParamList, 'CreditCardForm'>;
+type Props = NativeStackScreenProps<AccountsStackParamList, 'CreditCardForm'>;
 
 export default function CreditCardFormScreen({ route, navigation }: Props) {
   const theme = useTheme();
@@ -19,6 +19,7 @@ export default function CreditCardFormScreen({ route, navigation }: Props) {
   const [name, setName] = useState(existing?.name ?? '');
   const [bank, setBank] = useState(existing?.bank ?? '');
   const [dueDate, setDueDate] = useState(existing ? String(existing.due_date) : '');
+  const [openingBalance, setOpeningBalance] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
   const [apiError, setApiError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -43,7 +44,7 @@ export default function CreditCardFormScreen({ route, navigation }: Props) {
     if (problems.length > 0) return;
 
     setIsSubmitting(true);
-    const input = { name: name.trim(), bank: bank.trim(), dueDate: Number(dueDate) };
+    const input = { name: name.trim(), bank: bank.trim(), dueDate: Number(dueDate), openingBalance: openingBalance ? Number(openingBalance) : 0 };
 
     try {
       if (isEditing && existing) {
@@ -79,6 +80,24 @@ export default function CreditCardFormScreen({ route, navigation }: Props) {
         <HelperText type="info" visible style={styles.helper}>
           Day of the month your statement is due, e.g. 25
         </HelperText>
+
+        {!isEditing && (
+          <>
+            <TextInput
+              label="Current Outstanding (optional)"
+              value={openingBalance}
+              onChangeText={setOpeningBalance}
+              keyboardType="decimal-pad"
+              inputAccessoryViewID={DONE_ACCESSORY_ID}
+              placeholder="0.00"
+              left={<TextInput.Affix text="₱" />}
+              style={styles.field}
+            />
+            <HelperText type="info" visible style={styles.helper}>
+              Any balance already on this card, e.g. from before you started using the app
+            </HelperText>
+          </>
+        )}
 
         {errors.length > 0 && (
           <View style={styles.field}>

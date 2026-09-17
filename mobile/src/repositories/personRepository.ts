@@ -4,6 +4,7 @@ import { newId, nowISO } from '../utils/money';
 export interface PersonRow {
   id: string;
   name: string;
+  opening_owed_cents: number;
   created_at: string;
   updated_at: string;
 }
@@ -32,11 +33,18 @@ export const personRepository = {
     return (await this.findById(id)) !== null;
   },
 
-  async insert(name: string): Promise<PersonRow> {
+  async insert(name: string, openingOwedCents = 0): Promise<PersonRow> {
     const db = await getDb();
     const id = newId();
     const now = nowISO();
-    await db.runAsync('INSERT INTO people (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)', id, name, now, now);
+    await db.runAsync(
+      'INSERT INTO people (id, name, opening_owed_cents, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+      id,
+      name,
+      openingOwedCents,
+      now,
+      now
+    );
     return (await this.findById(id))!;
   },
 

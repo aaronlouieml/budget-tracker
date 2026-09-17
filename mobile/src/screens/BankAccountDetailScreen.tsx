@@ -20,9 +20,9 @@ import { formatCurrency, formatDate, todayISODate } from '../utils/format';
 import { confirmDestructive } from '../utils/confirm';
 import DismissKeyboardView from '../components/DismissKeyboardView';
 import DoneAccessory, { DONE_ACCESSORY_ID } from '../components/DoneAccessory';
-import type { BankAccountsStackParamList } from '../navigation/BankAccountsNavigator';
+import type { AccountsStackParamList } from '../navigation/AccountsNavigator';
 
-type Props = NativeStackScreenProps<BankAccountsStackParamList, 'AccountDetail'>;
+type Props = NativeStackScreenProps<AccountsStackParamList, 'AccountDetail'>;
 
 const TYPE_LABELS = Object.fromEntries(ACCOUNT_TYPES.map((t) => [t.value, t.label]));
 const PURPOSE_LABELS = Object.fromEntries(RESERVATION_PURPOSES.map((p) => [p.value, p.label]));
@@ -33,6 +33,7 @@ const ACTIVITY_ICONS: Record<ActivityItem['type'], string> = {
   transfer: 'bank-transfer',
   incoming: 'cash-plus',
   reimbursement: 'account-cash-outline',
+  plan_import: 'calendar-check-outline',
 };
 
 export default function BankAccountDetailScreen({ route, navigation }: Props) {

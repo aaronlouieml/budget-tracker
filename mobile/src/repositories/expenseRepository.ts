@@ -147,4 +147,9 @@ export const expenseRepository = {
     const db = await getDb();
     return db.getAllAsync<ExpenseRow>(`SELECT ${LIST_COLUMNS} FROM expenses ORDER BY date DESC, created_at DESC LIMIT ?`, limit);
   },
+
+  async forDateRange(startDate: string, endDate: string): Promise<ExpenseRow[]> {
+    const db = await getDb();
+    return db.getAllAsync<ExpenseRow>(`SELECT ${LIST_COLUMNS} FROM expenses WHERE date BETWEEN ? AND ? ORDER BY date DESC, created_at DESC`, startDate, endDate);
+  },
 };
