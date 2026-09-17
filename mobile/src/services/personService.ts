@@ -71,13 +71,15 @@ function toPerson(row: PersonRow, owesMeCents: number): Person {
 export const personService = {
   async listPeople(): Promise<Person[]> {
     const [people, sharesTotals, paymentTotals] = await Promise.all([personRepository.listAll(), personRepository.sharesTotalsByPerson(), personRepository.paymentTotalsByPerson()]);
-    return people.map((p) => toPerson(p, (sharesTotals.get(p.id) ?? 0) - (paymentTotals.get(p.id) ?? 0)));
+    return people.map((p) => toPerson(p, p.opening_owed_cents + (sharesTotals.get(p.id) ?? 0) - (paymentTotals.get(p.id) ?? 0)));
   },
 
-  async createPerson(name: string): Promise<Person> {
+  // openingOwed lets onboarding record a pre-existing balance (from before
+  // the app was used) without fabricating an expense/share for it.
+  async createPerson(name: string, openingOwed = 0): Promise<Person> {
     if (!name?.trim()) throw new ServiceError(['name is required']);
-    const row = await personRepository.insert(name.trim());
-    return toPerson(row, 0);
+    const row = await personRepository.insert(name.trim(), toCents(openingOwed));
+    return toPerson(row, row.opening_owed_cents);
   },
 
   async fetchPerson(id: string): Promise<PersonDetail> {
@@ -114,7 +116,7 @@ export const personService = {
       })
       .reverse(); // most recent first for display
 
-    const totalOwedCents = shareRows.reduce((sum: number, s: any) => sum + s.amount_cents, 0);
+    const totalOwedCents = shareRows.reduce((sum: number, s: any) => sum + s.amount_cents, 0) + person.opening_owed_cents;
     const outstandingCents = totalOwedCents - totalPaidCents;
 
     return {
@@ -139,7 +141,7 @@ export const personService = {
     if (!row) throw new ServiceError(['Person not found'], 404);
     const shares = await personRepository.sharesTotalForPerson(id);
     const payments = await personRepository.paymentTotalForPerson(id);
-    return toPerson(row, shares - payments);
+    return toPerson(row, row.opening_owed_cents + shares - payments);
   },
 
   async deletePerson(id: string): Promise<void> {
@@ -156,7 +158,7 @@ export const personService = {
 
     const sharesTotal = await personRepository.sharesTotalForPerson(personId);
     const paymentsTotal = await personRepository.paymentTotalForPerson(personId);
-    const outstandingCents = sharesTotal - paymentsTotal;
+    const outstandingCents = person.opening_owed_cents + sharesTotal - paymentsTotal;
     const amountCents = toCents(input.amount);
     if (amountCents > outstandingCents + 1) {
       throw new ServiceError([`Amount exceeds the outstanding balance (${fromCents(outstandingCents)})`]);

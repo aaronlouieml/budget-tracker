@@ -4,6 +4,7 @@ import { expenseRepository } from '../repositories/expenseRepository';
 import { creditCardRepository } from '../repositories/creditCardRepository';
 import { personRepository } from '../repositories/personRepository';
 import { transferRepository } from '../repositories/transferRepository';
+import { savedPlanRepository } from '../repositories/savedPlanRepository';
 import { toCents, fromCents } from '../utils/money';
 import { ServiceError } from './errors';
 
@@ -53,7 +54,7 @@ export interface BankAccountDetail {
   potentialAvailable: string;
 }
 
-export type ActivityType = 'expense' | 'credit_card_payment' | 'transfer' | 'incoming' | 'reimbursement';
+export type ActivityType = 'expense' | 'credit_card_payment' | 'transfer' | 'incoming' | 'reimbursement' | 'plan_import';
 
 export interface ActivityItem {
   id: string;
@@ -168,12 +169,13 @@ export const bankAccountService = {
     const account = await bankAccountRepository.findById(accountId);
     if (!account) throw new ServiceError(['Bank account not found'], 404);
 
-    const [expenses, payments, incoming, reimbursements, transfers] = await Promise.all([
+    const [expenses, payments, incoming, reimbursements, transfers, planImports] = await Promise.all([
       expenseRepository.forAccount(accountId),
       creditCardRepository.paymentsForAccount(accountId),
       bankAccountRepository.incomingForAccount(accountId),
       personRepository.paymentsForAccount(accountId),
       transferRepository.forAccount(accountId),
+      savedPlanRepository.importsForAccount(accountId),
     ]);
 
     const items: ActivityItem[] = [
@@ -226,6 +228,16 @@ export const bankAccountService = {
         direction: (t.from_account_id === accountId ? 'out' : 'in') as 'out' | 'in',
         date: t.date,
         created_at: t.created_at,
+      })),
+      ...planImports.map((p) => ({
+        id: p.id,
+        type: 'plan_import' as const,
+        label: p.plan_name,
+        detail: 'Plan imported',
+        amount: fromCents(p.amount_cents),
+        direction: 'in' as const,
+        date: p.date,
+        created_at: p.created_at,
       })),
     ];
 

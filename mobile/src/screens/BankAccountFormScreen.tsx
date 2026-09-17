@@ -8,9 +8,9 @@ import { ServiceError } from '../services/errors';
 import { ACCOUNT_TYPES } from '../constants/accountOptions';
 import DismissKeyboardView from '../components/DismissKeyboardView';
 import DoneAccessory, { DONE_ACCESSORY_ID } from '../components/DoneAccessory';
-import type { BankAccountsStackParamList } from '../navigation/BankAccountsNavigator';
+import type { AccountsStackParamList } from '../navigation/AccountsNavigator';
 
-type Props = NativeStackScreenProps<BankAccountsStackParamList, 'AccountForm'>;
+type Props = NativeStackScreenProps<AccountsStackParamList, 'AccountForm'>;
 
 export default function BankAccountFormScreen({ route, navigation }: Props) {
   const theme = useTheme();

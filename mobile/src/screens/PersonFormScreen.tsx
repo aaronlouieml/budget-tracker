@@ -16,6 +16,7 @@ export default function PersonFormScreen({ route, navigation }: Props) {
   const isEditing = !!existing;
 
   const [name, setName] = useState(existing?.name ?? '');
+  const [openingOwed, setOpeningOwed] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -33,7 +34,7 @@ export default function PersonFormScreen({ route, navigation }: Props) {
       if (isEditing && existing) {
         await personService.updatePerson(existing.id, name.trim());
       } else {
-        await personService.createPerson(name.trim());
+        await personService.createPerson(name.trim(), openingOwed ? Number(openingOwed) : 0);
       }
       navigation.goBack();
     } catch (err) {
@@ -48,6 +49,18 @@ export default function PersonFormScreen({ route, navigation }: Props) {
       <DismissKeyboardView>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <TextInput label="Name" value={name} onChangeText={setName} placeholder="Mau" style={styles.field} />
+
+        {!isEditing && (
+          <TextInput
+            label="Existing Balance Owed (optional)"
+            value={openingOwed}
+            onChangeText={setOpeningOwed}
+            keyboardType="decimal-pad"
+            placeholder="0.00"
+            left={<TextInput.Affix text="₱" />}
+            style={styles.field}
+          />
+        )}
 
         {error && (
           <Text style={[styles.error, { color: theme.colors.error }]} variant="bodySmall">

@@ -52,6 +52,10 @@ export interface CreditCardInput {
   name: string;
   bank: string;
   dueDate: number;
+  // Pre-existing outstanding balance from before the app was used (set during
+  // onboarding). Not editable after creation - only new charges/payments
+  // change outstanding from that point on.
+  openingBalance?: number;
 }
 
 export interface PayFromAccountResult {
@@ -136,8 +140,14 @@ export const creditCardService = {
 
   async createCard(input: CreditCardInput): Promise<CreditCard> {
     validateInput(input);
-    const row = await creditCardRepository.insert({ name: input.name.trim(), bank: input.bank.trim(), dueDate: input.dueDate });
-    return toCreditCard(row, 0, { myResponsibilityCents: 0, othersOweCents: 0 });
+    const openingBalanceCents = toCents(input.openingBalance || 0);
+    const row = await creditCardRepository.insert({
+      name: input.name.trim(),
+      bank: input.bank.trim(),
+      dueDate: input.dueDate,
+      openingBalanceCents,
+    });
+    return toCreditCard(row, openingBalanceCents, { myResponsibilityCents: openingBalanceCents, othersOweCents: 0 });
   },
 
   async fetchCard(id: string): Promise<CreditCardDetail> {
@@ -175,14 +185,6 @@ export const creditCardService = {
   async deleteCard(id: string): Promise<void> {
     const deleted = await creditCardRepository.delete(id);
     if (!deleted) throw new ServiceError(['Credit card not found'], 404);
-  },
-
-  async recordPayment(cardId: string, input: { amount: number; date: string }): Promise<Payment> {
-    if (!input.amount || input.amount <= 0) throw new ServiceError(['amount must be a positive number']);
-    const card = await creditCardRepository.findById(cardId);
-    if (!card) throw new ServiceError(['Credit card not found'], 404);
-    const row = await creditCardRepository.insertPayment({ creditCardId: cardId, amountCents: toCents(input.amount), date: input.date });
-    return toPayment(row);
   },
 
   // Pays a card from a bank account in one step: records the payment (not an

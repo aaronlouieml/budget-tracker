@@ -3,9 +3,26 @@ import { bankAccountService } from '../services/bankAccountService';
 import { creditCardService } from '../services/creditCardService';
 import { personService } from '../services/personService';
 import { expenseService } from '../services/expenseService';
+import { recurringPaymentService } from '../services/recurringPaymentService';
+import { savedPlanService } from '../services/savedPlanService';
 import { todayISODate } from './format';
 
-const TABLES = ['transfers', 'debt_payments', 'expense_shares', 'payments', 'reservations', 'incoming_money', 'expenses', 'people', 'credit_cards', 'bank_accounts'];
+const TABLES = [
+  'transfers',
+  'debt_payments',
+  'expense_shares',
+  'payments',
+  'reservations',
+  'incoming_money',
+  'expenses',
+  'recurring_payments',
+  'plan_imports',
+  'saved_plan_allocations',
+  'saved_plans',
+  'people',
+  'credit_cards',
+  'bank_accounts',
+];
 
 async function resetAllData(): Promise<void> {
   const db = await getDb();
@@ -51,4 +68,42 @@ export async function seedTestData(): Promise<void> {
   });
 
   await personService.recordPayment(mau.id, { amount: 1_000, bankAccountId: account.id, date: today });
+
+  // A second card with an opening balance and a partially-repaid shared
+  // expense, to exercise the opening-balance mechanism and partial-repayment
+  // math (as opposed to the fully-repaid scenario above).
+  const secondCard = await creditCardService.createCard({ name: 'BDO Visa', bank: 'BDO', dueDate: 10, openingBalance: 5_000 });
+  const jam = await personService.createPerson('Jam', 500);
+  await expenseService.createExpense({
+    amount: 3_000,
+    category: 'Utilities',
+    date: today,
+    merchant: 'Meralco',
+    payment_method: 'credit_card',
+    credit_card_id: secondCard.id,
+    bank_account_id: null,
+    receipt_image: null,
+    shares: [{ personId: jam.id, amount: 1_500 }],
+  });
+  await personService.recordPayment(jam.id, { amount: 800, bankAccountId: account.id, date: today });
+
+  await recurringPaymentService.create({
+    creditCardId: card.id,
+    name: 'Netflix',
+    amount: 549,
+    frequency: 'monthly',
+    nextDate: today,
+    category: 'Subscriptions',
+  });
+
+  await savedPlanService.createPlan({
+    name: '13th Month Pay',
+    expectedDate: null,
+    plannedAmount: 30_000,
+    note: null,
+    allocations: [
+      { name: 'Christmas Gifts', amount: 10_000 },
+      { name: 'Savings', amount: 20_000 },
+    ],
+  });
 }
