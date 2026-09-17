@@ -1,13 +1,11 @@
 import type { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { Category } from './expenseOptions';
+import type { PastelFamily } from '../theme/colors';
 
 type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
 
 // One consistent icon per category, used everywhere a transaction/expense
 // row is shown (Expenses feed, Recent Expenses on Home, expense detail).
-// Icons sit on a single neutral background rather than a different bright
-// color per category - see categoryColors.ts for the one place (the
-// spending-by-category chart) that legitimately needs distinct colors.
 export const CATEGORY_ICONS: Record<Category, IconName> = {
   Food: 'silverware-fork-knife',
   Groceries: 'basket-outline',
@@ -25,4 +23,26 @@ export const CATEGORY_ICONS: Record<Category, IconName> = {
 
 export function iconForCategory(category: string): IconName {
   return CATEGORY_ICONS[category as Category] ?? 'shape-outline';
+}
+
+// Each category gets one of the six pastel families, reused consistently
+// everywhere a category is shown (icon circles, the spending chart) rather
+// than a different color per screen. Each family covers two categories.
+export const CATEGORY_PASTEL: Record<Category, PastelFamily> = {
+  Food: 'peach',
+  Shopping: 'peach',
+  Groceries: 'mint',
+  Health: 'mint',
+  Rent: 'lavender',
+  Gadgets: 'lavender',
+  Bills: 'yellow',
+  Education: 'yellow',
+  Transportation: 'blue',
+  Travel: 'blue',
+  Entertainment: 'pink',
+  Others: 'pink',
+};
+
+export function pastelForCategory(category: string): PastelFamily {
+  return CATEGORY_PASTEL[category as Category] ?? 'lavender';
 }

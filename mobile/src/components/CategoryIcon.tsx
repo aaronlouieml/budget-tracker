@@ -1,8 +1,8 @@
 import { StyleSheet, View } from 'react-native';
-import { useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-import { iconForCategory } from '../constants/categoryIcons';
+import { iconForCategory, pastelForCategory } from '../constants/categoryIcons';
+import { pastel } from '../theme/colors';
 import { radii } from '../theme/radii';
 
 interface Props {
@@ -10,10 +10,11 @@ interface Props {
   size?: number;
 }
 
-// One consistent circular icon treatment for every expense/transaction row,
-// rather than a different bright color per category - see categoryIcons.ts.
+// A pastel-tinted circle behind each category's icon - one consistent
+// family per category (see categoryIcons.ts), used as a small accent rather
+// than coloring the whole row.
 export default function CategoryIcon({ category, size = 38 }: Props) {
-  const theme = useTheme();
+  const { bg, fg } = pastel[pastelForCategory(category)];
 
   return (
     <View
@@ -23,11 +24,11 @@ export default function CategoryIcon({ category, size = 38 }: Props) {
           width: size,
           height: size,
           borderRadius: radii.pill,
-          backgroundColor: theme.colors.surfaceVariant,
+          backgroundColor: bg,
         },
       ]}
     >
-      <MaterialCommunityIcons name={iconForCategory(category)} size={size * 0.52} color={theme.colors.onSurfaceVariant} />
+      <MaterialCommunityIcons name={iconForCategory(category)} size={size * 0.52} color={fg} />
     </View>
   );
 }

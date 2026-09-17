@@ -175,7 +175,7 @@ export default function HomeScreen({ navigation }: Props) {
         <View style={[styles.heroCard, { backgroundColor: theme.colors.primary }]}>
           <View style={styles.heroTopRow}>
             <View style={styles.heroTopText}>
-              <Text variant="labelLarge" style={[styles.heroLabel, { color: theme.colors.inversePrimary }]}>
+              <Text variant="labelLarge" style={[styles.heroLabel, styles.heroMuted, { color: theme.colors.onPrimary }]}>
                 Your Pocket
               </Text>
               <Text variant="displaySmall" style={[tabularNumberStyle, styles.heroAmount, { color: theme.colors.onPrimary }]}>
@@ -185,14 +185,14 @@ export default function HomeScreen({ navigation }: Props) {
             <SliceRing
               availableFraction={pocketTotal > 0 ? Number(data.overview.totalAvailable) / pocketTotal : 1}
               availableColor={theme.colors.tertiary}
-              setAsideColor="rgba(255,255,255,0.22)"
+              setAsideColor="rgba(255, 255, 255, 0.22)"
             />
           </View>
           <View style={[styles.heroDivider, { backgroundColor: theme.colors.onPrimary, opacity: 0.14 }]} />
           <View style={styles.heroStatsRow}>
             <View style={styles.heroStat}>
               <View style={[styles.heroDot, { backgroundColor: theme.colors.tertiary }]} />
-              <Text variant="bodySmall" style={[styles.heroStatLabel, { color: theme.colors.inversePrimary }]}>
+              <Text variant="bodySmall" style={[styles.heroStatLabel, styles.heroMuted, { color: theme.colors.onPrimary }]}>
                 Your Slice
               </Text>
               <Text variant="titleSmall" style={[tabularNumberStyle, { color: theme.colors.onPrimary }]}>
@@ -200,8 +200,8 @@ export default function HomeScreen({ navigation }: Props) {
               </Text>
             </View>
             <View style={styles.heroStat}>
-              <View style={[styles.heroDot, { backgroundColor: 'rgba(255,255,255,0.5)' }]} />
-              <Text variant="bodySmall" style={[styles.heroStatLabel, { color: theme.colors.inversePrimary }]}>
+              <View style={[styles.heroDot, { backgroundColor: 'rgba(255, 255, 255, 0.5)' }]} />
+              <Text variant="bodySmall" style={[styles.heroStatLabel, styles.heroMuted, { color: theme.colors.onPrimary }]}>
                 Set Aside
               </Text>
               <Text variant="titleSmall" style={[tabularNumberStyle, { color: theme.colors.onPrimary }]}>
@@ -212,8 +212,8 @@ export default function HomeScreen({ navigation }: Props) {
           {Number(data.overview.totalCreditCardOutstanding) > 0 && (
             <View style={styles.heroCardsRow}>
               <View style={styles.heroCardsLabelRow}>
-                <MaterialCommunityIcons name="credit-card-outline" size={14} color={theme.colors.inversePrimary} />
-                <Text variant="bodySmall" style={{ color: theme.colors.inversePrimary }}>
+                <MaterialCommunityIcons name="credit-card-outline" size={14} color={theme.colors.onPrimary} style={styles.heroMuted} />
+                <Text variant="bodySmall" style={[styles.heroMuted, { color: theme.colors.onPrimary }]}>
                   Credit Cards{data.overview.dueSoonCount > 0 ? ` · ${data.overview.dueSoonCount} due soon` : ''}
                 </Text>
               </View>
@@ -527,6 +527,13 @@ const styles = StyleSheet.create({
   heroAmount: {
     marginBottom: 0,
   },
+  // A muted version of the onPrimary text/icon color, for secondary labels
+  // on the hero card - inversePrimary can't be reused here since it's a
+  // light tone Paper's own Snackbar relies on staying light for contrast
+  // on its dark inverseSurface background.
+  heroMuted: {
+    opacity: 0.62,
+  },
   heroDivider: {
     height: StyleSheet.hairlineWidth,
     marginTop: spacing.base,
@@ -555,7 +562,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.base,
     paddingTop: spacing.base,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(255,255,255,0.14)',
+    borderTopColor: 'rgba(255, 255, 255, 0.14)',
   },
   heroCardsLabelRow: {
     flexDirection: 'row',

@@ -217,7 +217,7 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
         <View style={[styles.summary, { backgroundColor: theme.colors.primary }]}>
           <View style={styles.summaryTopRow}>
             <View>
-              <Text variant="bodyMedium" style={[styles.bank, { color: theme.colors.inversePrimary }]}>
+              <Text variant="bodyMedium" style={[styles.bank, styles.heroMuted, { color: theme.colors.onPrimary }]}>
                 {card.bank}
               </Text>
               <StatusPill label="CREDIT CARD" tone="neutral" />
@@ -228,16 +228,16 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
           <Text variant="displaySmall" style={[tabularNumberStyle, styles.unpaidAmount, { color: theme.colors.onPrimary }]}>
             {formatCurrency(card.unpaid)}
           </Text>
-          <Text variant="bodyMedium" style={[styles.unpaidLabel, { color: theme.colors.inversePrimary }]}>
+          <Text variant="bodyMedium" style={[styles.unpaidLabel, styles.heroMuted, { color: theme.colors.onPrimary }]}>
             Outstanding
           </Text>
 
           {hasSharedResponsibility && (
             <>
-              <View style={[styles.summaryDivider, { backgroundColor: theme.colors.onPrimary }]} />
+              <View style={[styles.summaryDivider, { backgroundColor: theme.colors.onPrimary, opacity: 0.14 }]} />
               <View style={styles.responsibilityRow}>
                 <View>
-                  <Text variant="bodySmall" style={{ color: theme.colors.inversePrimary }}>
+                  <Text variant="bodySmall" style={[styles.heroMuted, { color: theme.colors.onPrimary }]}>
                     You owe
                   </Text>
                   <Text variant="titleMedium" style={[tabularNumberStyle, { color: theme.colors.onPrimary }]}>
@@ -245,7 +245,7 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
                   </Text>
                 </View>
                 <View style={styles.responsibilityRight}>
-                  <Text variant="bodySmall" style={{ color: theme.colors.inversePrimary }}>
+                  <Text variant="bodySmall" style={[styles.heroMuted, { color: theme.colors.onPrimary }]}>
                     Others owe you
                   </Text>
                   <Text variant="titleMedium" style={[tabularNumberStyle, { color: theme.colors.onPrimary }]}>
@@ -256,7 +256,7 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
             </>
           )}
 
-          <Text variant="bodyMedium" style={[styles.dueText, { color: theme.colors.inversePrimary }]}>
+          <Text variant="bodyMedium" style={[styles.dueText, styles.heroMuted, { color: theme.colors.onPrimary }]}>
             Due {formatDate(card.next_due_date)}
           </Text>
         </View>
@@ -494,6 +494,11 @@ const styles = StyleSheet.create({
   },
   bank: {
     marginBottom: spacing.xs,
+  },
+  // A muted version of the onPrimary text color, for secondary labels on
+  // the hero card.
+  heroMuted: {
+    opacity: 0.62,
   },
   unpaidAmount: {
     marginTop: spacing.base,

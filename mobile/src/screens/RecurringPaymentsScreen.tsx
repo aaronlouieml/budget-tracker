@@ -213,7 +213,7 @@ export default function RecurringPaymentsScreen({ route }: Props) {
         </ScrollView>
       </DismissKeyboardView>
 
-      <FAB icon="plus" style={[styles.fab, { backgroundColor: theme.colors.primary }]} onPress={openCreateForm} />
+      <FAB icon="plus" color={theme.colors.onPrimary} style={[styles.fab, { backgroundColor: theme.colors.primary }]} onPress={openCreateForm} />
 
       <Portal>
         <Dialog visible={isFormVisible} onDismiss={() => setFormVisible(false)}>
