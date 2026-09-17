@@ -22,8 +22,8 @@ export default function EmptyState({ icon, title, description, actionLabel, onAc
 
   return (
     <View style={[styles.container, compact && styles.containerCompact]}>
-      <View style={[styles.iconCircle, { backgroundColor: theme.colors.surfaceVariant }]}>
-        <MaterialCommunityIcons name={icon} size={28} color={theme.colors.onSurfaceVariant} />
+      <View style={[styles.iconCircle, { backgroundColor: theme.colors.primaryContainer }]}>
+        <MaterialCommunityIcons name={icon} size={28} color={theme.colors.onPrimaryContainer} />
       </View>
       <Text variant="titleMedium" style={[styles.title, { color: theme.colors.onSurface }]}>
         {title}

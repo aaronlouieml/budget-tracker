@@ -7,7 +7,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { bankAccountService, type BankAccount } from '../services/bankAccountService';
 import { creditCardService, type CreditCard } from '../services/creditCardService';
 import { ServiceError } from '../services/errors';
-import { ACCOUNT_TYPES } from '../constants/accountOptions';
+import { ACCOUNT_TYPES, ACCOUNT_TYPE_PASTEL } from '../constants/accountOptions';
 import { STATUS_LABELS, STATUS_TONE } from '../constants/cardStatus';
 import { formatCurrency, formatShortDate } from '../utils/format';
 import StatusPill from '../components/StatusPill';
@@ -119,7 +119,7 @@ export default function AccountsScreen({ navigation }: Props) {
                   <Text variant="titleMedium" numberOfLines={1} style={[styles.cardTitle, { color: theme.colors.onSurface }]}>
                     {item.data.name}
                   </Text>
-                  <StatusPill label={(TYPE_LABELS[item.data.type] ?? item.data.type).toUpperCase()} tone="neutral" />
+                  <StatusPill label={(TYPE_LABELS[item.data.type] ?? item.data.type).toUpperCase()} tone={ACCOUNT_TYPE_PASTEL[item.data.type] ?? 'neutral'} />
                 </View>
                 <AmountText value={formatCurrency(item.data.balance)} variant="headlineSmall" style={styles.cardAmount} />
                 <View style={styles.detailRow}>

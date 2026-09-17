@@ -315,23 +315,23 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
           <Text variant="displaySmall" style={[tabularNumberStyle, styles.balanceAmount, { color: theme.colors.onPrimary }]}>
             {formatCurrency(account.balance)}
           </Text>
-          <Text variant="bodyMedium" style={[styles.mutedLabel, { color: theme.colors.inversePrimary }]}>
+          <Text variant="bodyMedium" style={[styles.mutedLabel, styles.heroMuted, { color: theme.colors.onPrimary }]}>
             Current Balance
           </Text>
 
-          <View style={[styles.summaryDivider, { backgroundColor: theme.colors.onPrimary }]} />
+          <View style={[styles.summaryDivider, { backgroundColor: theme.colors.onPrimary, opacity: 0.14 }]} />
 
           <View style={styles.summaryRow}>
             <View style={styles.summaryCol}>
-              <Text variant="bodySmall" style={{ color: theme.colors.inversePrimary }}>
+              <Text variant="bodySmall" style={[styles.heroMuted, { color: theme.colors.onPrimary }]}>
                 Your Slice
               </Text>
-              <Text variant="titleMedium" style={[tabularNumberStyle, { color: theme.colors.onPrimary }]}>
+              <Text variant="titleMedium" style={[tabularNumberStyle, { color: theme.colors.tertiary }]}>
                 {formatCurrency(account.available)}
               </Text>
             </View>
             <View style={styles.summaryCol}>
-              <Text variant="bodySmall" style={{ color: theme.colors.inversePrimary }}>
+              <Text variant="bodySmall" style={[styles.heroMuted, { color: theme.colors.onPrimary }]}>
                 Set Aside
               </Text>
               <Text variant="titleMedium" style={[tabularNumberStyle, { color: theme.colors.onPrimary }]}>
@@ -682,6 +682,11 @@ const styles = StyleSheet.create({
   },
   mutedLabel: {
     marginTop: 2,
+  },
+  // A muted version of the onPrimary text color, for secondary labels on
+  // the hero card.
+  heroMuted: {
+    opacity: 0.62,
   },
   summaryDivider: {
     alignSelf: 'stretch',
