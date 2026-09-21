@@ -1,31 +1,51 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
-import { Button, Chip, Dialog, Divider, IconButton, List, Menu, Portal, Text, useTheme } from 'react-native-paper';
+import { Button, Dialog, Portal, Text, useTheme } from 'react-native-paper';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { expenseService, type ExpenseShareInput } from '../services/expenseService';
 import { creditCardService, type CreditCard } from '../services/creditCardService';
-import { bankAccountService, type BankAccount } from '../services/bankAccountService';
+import { bankAccountService, type AccountType, type BankAccount, type Reservation } from '../services/bankAccountService';
 import { personService, type Person } from '../services/personService';
 import { ServiceError } from '../services/errors';
-import { CATEGORIES, PAYMENT_METHODS } from '../constants/expenseOptions';
+import { CATEGORIES } from '../constants/expenseOptions';
 import { suggestCategory } from '../constants/categorySuggestions';
 import { formatCurrency, todayISODate } from '../utils/format';
+import { confirmAction } from '../utils/confirm';
+import CategoryIcon from '../components/CategoryIcon';
 import DateField from '../components/DateField';
 import DismissKeyboardView from '../components/DismissKeyboardView';
 import DoneAccessory, { DONE_ACCESSORY_ID } from '../components/DoneAccessory';
 import AppTextInput from '../components/AppTextInput';
+import OptionRow, { type OptionItem } from '../components/OptionRow';
 import { spacing, screenPadding } from '../theme/spacing';
-import { radii } from '../theme/radii';
 import type { ExpensesStackParamList } from '../navigation/ExpensesNavigator';
 
 type Props = NativeStackScreenProps<ExpensesStackParamList, 'ExpenseForm'>;
 
-interface SplitPersonRow {
-  personId: string;
-  name: string;
-  amountText: string;
+// What a picked account/card means for the stored payment method - the form
+// no longer asks for it separately, it follows from where the money comes from.
+const PAYMENT_METHOD_FOR_ACCOUNT_TYPE: Record<AccountType, string> = {
+  cash: 'cash',
+  savings: 'debit_card',
+  checking: 'debit_card',
+  ewallet: 'ewallet',
+};
+
+const ACCOUNT_ICONS: Record<AccountType, keyof typeof MaterialCommunityIcons.glyphMap> = {
+  cash: 'cash',
+  savings: 'piggy-bank-outline',
+  checking: 'bank-outline',
+  ewallet: 'cellphone',
+};
+
+const NO_ACCOUNT = 'none';
+
+function equalSplit(total: number, otherCount: number) {
+  const each = Math.floor((total / (otherCount + 1)) * 100) / 100;
+  return { each, mine: total - each * otherCount };
 }
 
 export default function ExpenseFormScreen({ route, navigation }: Props) {
@@ -38,9 +58,11 @@ export default function ExpenseFormScreen({ route, navigation }: Props) {
   const [category, setCategory] = useState(existing?.category ?? suggestCategory(scanned?.merchant) ?? '');
   const [date, setDate] = useState(existing?.date ?? scanned?.date ?? todayISODate());
   const [merchant, setMerchant] = useState(existing?.merchant ?? scanned?.merchant ?? '');
-  const [paymentMethod, setPaymentMethod] = useState(existing?.payment_method ?? 'cash');
-  const [creditCardId, setCreditCardId] = useState<string | null>(existing?.credit_card_id ?? null);
-  const [bankAccountId, setBankAccountId] = useState<string | null>(existing?.bank_account_id ?? null);
+  // 'none' | `account:<id>` | `card:<id>`
+  const [payWith, setPayWith] = useState<string>(
+    existing?.credit_card_id ? `card:${existing.credit_card_id}` : existing?.bank_account_id ? `account:${existing.bank_account_id}` : NO_ACCOUNT
+  );
+  const [reservationId, setReservationId] = useState<string | null>(existing?.reservation_id ?? null);
   const [errors, setErrors] = useState<string[]>([]);
   const [apiError, setApiError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -48,17 +70,21 @@ export default function ExpenseFormScreen({ route, navigation }: Props) {
   const receiptImage = existing?.receipt_image ?? scanned?.imageBase64 ?? null;
 
   const [cards, setCards] = useState<CreditCard[]>([]);
-  const [isCardMenuVisible, setCardMenuVisible] = useState(false);
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
-  const [isAccountMenuVisible, setAccountMenuVisible] = useState(false);
+  const [accountReservations, setAccountReservations] = useState<Reservation[]>([]);
 
   const [people, setPeople] = useState<Person[]>([]);
-  const [isSplitDialogVisible, setSplitDialogVisible] = useState(false);
-  const [myShareText, setMyShareText] = useState('');
-  const [splitRows, setSplitRows] = useState<SplitPersonRow[]>([]);
-  const [splitError, setSplitError] = useState<string | null>(null);
+  const [splitIds, setSplitIds] = useState<string[]>([]);
+  // null = split equally; otherwise the user's own amounts (text, per person).
+  const [customAmounts, setCustomAmounts] = useState<Record<string, string> | null>(null);
+  const [customMyShare, setCustomMyShare] = useState('');
+  const [isCustomDialogVisible, setCustomDialogVisible] = useState(false);
+  const [draftAmounts, setDraftAmounts] = useState<Record<string, string>>({});
+  const [draftMyShare, setDraftMyShare] = useState('');
+  const [customError, setCustomError] = useState<string | null>(null);
   const [isAddPersonVisible, setAddPersonVisible] = useState(false);
   const [newPersonName, setNewPersonName] = useState('');
+  const [addPersonError, setAddPersonError] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -66,33 +92,42 @@ export default function ExpenseFormScreen({ route, navigation }: Props) {
         .listCards()
         .then(setCards)
         .catch(() => {
-          // Non-critical: the picker just falls back to "no cards" state.
+          // Non-critical: the picker just shows no cards.
         });
       bankAccountService
         .listAccounts()
         .then(setAccounts)
         .catch(() => {
-          // Non-critical: the picker just falls back to "no accounts" state.
+          // Non-critical: the picker just shows no accounts.
         });
       personService
         .listPeople()
         .then(setPeople)
         .catch(() => {
-          // Non-critical: the split dialog just falls back to "no people" state.
+          // Non-critical: the split row just shows no people.
         });
     }, [])
   );
 
   // Existing split shares aren't included in the expense list payload, so fetch
-  // the full detail once when editing a split expense to prefill the dialog.
+  // the full detail once when editing a split expense to prefill the split.
   useFocusEffect(
     useCallback(() => {
       if (!existing) return;
       expenseService
         .fetchExpense(existing.id)
         .then((detail) => {
-          setMyShareText(detail.myShare);
-          setSplitRows(detail.shares.map((s) => ({ personId: s.person_id, name: s.person_name, amountText: s.amount })));
+          if (detail.shares.length === 0) return;
+          const ids = detail.shares.map((s) => s.person_id);
+          setSplitIds(ids);
+          const total = Number(detail.amount);
+          const { each, mine } = equalSplit(total, ids.length);
+          const isEqual =
+            Math.abs(Number(detail.myShare) - mine) < 0.005 && detail.shares.every((s) => Math.abs(Number(s.amount) - each) < 0.005);
+          if (!isEqual) {
+            setCustomAmounts(Object.fromEntries(detail.shares.map((s) => [s.person_id, s.amount])));
+            setCustomMyShare(detail.myShare);
+          }
         })
         .catch(() => {
           // Non-critical: worst case the split isn't prefilled and stays as a plain expense.
@@ -100,6 +135,91 @@ export default function ExpenseFormScreen({ route, navigation }: Props) {
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [existing?.id])
   );
+
+  const selectedAccountId = payWith.startsWith('account:') ? payWith.slice('account:'.length) : null;
+  const selectedCardId = payWith.startsWith('card:') ? payWith.slice('card:'.length) : null;
+  const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
+
+  // Set-aside options depend on which account is picked.
+  useEffect(() => {
+    if (!selectedAccountId) {
+      setAccountReservations([]);
+      return;
+    }
+    let cancelled = false;
+    bankAccountService
+      .fetchAccount(selectedAccountId)
+      .then((d) => {
+        if (!cancelled) setAccountReservations(d.reservations);
+      })
+      .catch(() => {
+        if (!cancelled) setAccountReservations([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedAccountId]);
+
+  // A set-aside you can pay from: still-active ones, plus the one this very
+  // expense already used (so editing it doesn't silently switch funding).
+  const reservationOptions = accountReservations.filter((r) => r.status === 'reserved' || r.id === existing?.reservation_id);
+
+  const total = Number(amount) || 0;
+  const otherCount = splitIds.length;
+  const equal = equalSplit(total, otherCount);
+  const shareFor = (personId: string) => (customAmounts ? Number(customAmounts[personId]) || 0 : equal.each);
+  const myShare = customAmounts ? Number(customMyShare) || 0 : equal.mine;
+
+  function selectPayWith(next: string) {
+    setPayWith(next);
+    setReservationId(null);
+  }
+
+  function togglePerson(personId: string) {
+    setSplitIds((ids) => (ids.includes(personId) ? ids.filter((id) => id !== personId) : [...ids, personId]));
+    // Adding/removing someone goes back to an equal split.
+    setCustomAmounts(null);
+  }
+
+  function openCustomDialog() {
+    setCustomError(null);
+    setDraftAmounts(Object.fromEntries(splitIds.map((id) => [id, shareFor(id).toFixed(2)])));
+    setDraftMyShare(myShare.toFixed(2));
+    setCustomDialogVisible(true);
+  }
+
+  function applyCustomAmounts() {
+    const sum = splitIds.reduce((acc, id) => acc + (Number(draftAmounts[id]) || 0), 0) + (Number(draftMyShare) || 0);
+    if (Math.abs(sum - total) > 0.005) {
+      setCustomError(`Amounts add up to ${formatCurrency(sum)} but the expense is ${formatCurrency(total)}`);
+      return;
+    }
+    setCustomAmounts(draftAmounts);
+    setCustomMyShare(draftMyShare);
+    setCustomDialogVisible(false);
+  }
+
+  function resetToEqual() {
+    setCustomAmounts(null);
+    setCustomMyShare('');
+    setCustomDialogVisible(false);
+  }
+
+  async function handleAddPerson() {
+    const name = newPersonName.trim();
+    if (!name) return;
+    setAddPersonError(null);
+    try {
+      const person = await personService.createPerson(name);
+      setPeople((prev) => [...prev, person]);
+      setSplitIds((ids) => [...ids, person.id]);
+      setCustomAmounts(null);
+      setNewPersonName('');
+      setAddPersonVisible(false);
+    } catch (err) {
+      setAddPersonError(err instanceof ServiceError ? err.message : 'Unable to add person.');
+    }
+  }
 
   function validate(): string[] {
     const problems: string[] = [];
@@ -115,6 +235,12 @@ export default function ExpenseFormScreen({ route, navigation }: Props) {
     if (!date) {
       problems.push('Date is required');
     }
+    if (customAmounts) {
+      const sum = splitIds.reduce((acc, id) => acc + (Number(customAmounts[id]) || 0), 0) + (Number(customMyShare) || 0);
+      if (Math.abs(sum - total) > 0.005) {
+        problems.push('The custom split no longer adds up to the amount. Tap "Custom amounts" to fix it, or reset to equal.');
+      }
+    }
     return problems;
   }
 
@@ -125,9 +251,15 @@ export default function ExpenseFormScreen({ route, navigation }: Props) {
     if (problems.length > 0) return;
 
     const shares: ExpenseShareInput[] | undefined =
-      splitRows.length > 0
-        ? splitRows.map((r) => ({ personId: r.personId, amount: Number(r.amountText) || 0 }))
-        : undefined;
+      splitIds.length > 0 ? splitIds.map((id) => ({ personId: id, amount: shareFor(id) })) : undefined;
+
+    // The payment method follows from what was picked. With nothing picked
+    // an existing expense keeps whatever it already had.
+    const paymentMethod = selectedCardId
+      ? 'credit_card'
+      : selectedAccount
+        ? PAYMENT_METHOD_FOR_ACCOUNT_TYPE[selectedAccount.type]
+        : existing?.payment_method ?? 'cash';
 
     setIsSubmitting(true);
     const input = {
@@ -135,10 +267,12 @@ export default function ExpenseFormScreen({ route, navigation }: Props) {
       category,
       date,
       merchant: merchant.trim() || null,
-      payment_method: paymentMethod || null,
-      credit_card_id: paymentMethod === 'credit_card' ? creditCardId : null,
-      bank_account_id: paymentMethod !== 'credit_card' ? bankAccountId : null,
+      payment_method: paymentMethod,
+      credit_card_id: selectedCardId,
+      bank_account_id: selectedAccountId,
+      reservation_id: selectedAccountId ? reservationId : null,
       receipt_image: receiptImage,
+      source: scanned ? ('scan' as const) : existing?.source ?? ('manual' as const),
       shares,
     };
 
@@ -156,362 +290,289 @@ export default function ExpenseFormScreen({ route, navigation }: Props) {
     }
   }
 
-  function recalculateEqualSplit(rows: SplitPersonRow[]) {
-    const total = Number(amount) || 0;
-    const shareCount = rows.length + 1; // + me
-    if (shareCount === 0 || total <= 0) return rows;
-    const base = Math.floor((total / shareCount) * 100) / 100;
-    const othersTotal = base * rows.length;
-    setMyShareText((total - othersTotal).toFixed(2));
-    return rows.map((r) => ({ ...r, amountText: base.toFixed(2) }));
-  }
-
-  function openSplitDialog() {
-    setSplitError(null);
-    if (splitRows.length === 0 && !myShareText) {
-      // Starting a fresh split: default to an even split with just me for now.
-      setMyShareText(amount || '');
-    }
-    setSplitDialogVisible(true);
-  }
-
-  function handleEqualSplit() {
-    setSplitRows((rows) => recalculateEqualSplit(rows));
-  }
-
-  function addPersonToSplit(person: Person) {
-    if (splitRows.some((r) => r.personId === person.id)) return;
-    setSplitRows((rows) => recalculateEqualSplit([...rows, { personId: person.id, name: person.name, amountText: '0' }]));
-    setAddPersonVisible(false);
-  }
-
-  async function handleCreateAndAddPerson() {
-    const name = newPersonName.trim();
-    if (!name) return;
-    try {
-      const person = await personService.createPerson(name);
-      setPeople((prev) => [...prev, person]);
-      setNewPersonName('');
-      addPersonToSplit(person);
-    } catch (err) {
-      setSplitError(err instanceof ServiceError ? err.message : 'Unable to add person.');
+  function handleScanReceipt() {
+    const go = () => navigation.replace('ReceiptCamera');
+    if (amount || merchant) {
+      confirmAction('Scan a receipt instead?', 'What you have entered so far will be replaced by the scan.', 'Scan', go);
+    } else {
+      go();
     }
   }
 
-  function removePersonFromSplit(personId: string) {
-    setSplitRows((rows) => recalculateEqualSplit(rows.filter((r) => r.personId !== personId)));
-  }
+  // Tiles ---------------------------------------------------------------
 
-  function clearSplit() {
-    setSplitRows([]);
-    setMyShareText('');
-    setSplitDialogVisible(false);
-  }
+  const categoryItems: OptionItem[] = CATEGORIES.map((c) => ({
+    key: c,
+    label: c,
+    leading: <CategoryIcon category={c} size={40} />,
+    selected: category === c,
+    onPress: () => setCategory(c),
+  }));
 
-  function closeSplitDialog() {
-    const total = Number(amount) || 0;
-    const splitTotal = splitRows.reduce((sum, r) => sum + (Number(r.amountText) || 0), 0) + (Number(myShareText) || 0);
-    if (splitRows.length > 0 && Math.abs(splitTotal - total) > 0.005) {
-      setSplitError(`Split total (${formatCurrency(splitTotal)}) must equal the expense total (${formatCurrency(total)})`);
-      return;
-    }
-    setSplitError(null);
-    setSplitDialogVisible(false);
-  }
+  const payItems: OptionItem[] = [
+    {
+      key: NO_ACCOUNT,
+      label: 'No account',
+      sublabel: 'Not tracked',
+      leading: <MaterialCommunityIcons name="wallet-outline" size={26} color={theme.colors.onSurfaceVariant} />,
+      selected: payWith === NO_ACCOUNT,
+      onPress: () => selectPayWith(NO_ACCOUNT),
+    },
+    ...accounts.map((a) => {
+      const key = `account:${a.id}`;
+      const blocked = Number(a.balance) < 0 && payWith !== key;
+      return {
+        key,
+        label: a.name,
+        sublabel: blocked ? 'Negative balance' : `${formatCurrency(a.available)} available`,
+        leading: <MaterialCommunityIcons name={ACCOUNT_ICONS[a.type]} size={26} color={theme.colors.primary} />,
+        selected: payWith === key,
+        disabled: blocked,
+        onPress: () => selectPayWith(key),
+      };
+    }),
+    ...cards.map((c) => {
+      const key = `card:${c.id}`;
+      return {
+        key,
+        label: c.name,
+        sublabel: 'Credit card',
+        leading: <MaterialCommunityIcons name="credit-card-outline" size={26} color={theme.colors.primary} />,
+        selected: payWith === key,
+        onPress: () => selectPayWith(key),
+      };
+    }),
+  ];
 
-  const selectedCard = cards.find((c) => c.id === creditCardId);
-  const selectedAccount = accounts.find((a) => a.id === bankAccountId);
-  const availablePeople = people.filter((p) => !splitRows.some((r) => r.personId === p.id));
-  const splitTotal = splitRows.reduce((sum, r) => sum + (Number(r.amountText) || 0), 0) + (Number(myShareText) || 0);
-  const amountValue = Number(amount) || 0;
+  const setAsideItems: OptionItem[] = [
+    {
+      key: 'available',
+      label: 'Available money',
+      sublabel: selectedAccount ? formatCurrency(selectedAccount.available) : undefined,
+      leading: <MaterialCommunityIcons name="cash-multiple" size={26} color={theme.colors.primary} />,
+      selected: reservationId === null,
+      onPress: () => setReservationId(null),
+    },
+    ...reservationOptions.map((r) => ({
+      key: r.id,
+      label: r.name,
+      sublabel: r.status === 'reserved' ? `${formatCurrency(r.amount)} set aside` : 'Used by this expense',
+      leading: <MaterialCommunityIcons name="lock-outline" size={26} color={theme.colors.primary} />,
+      selected: reservationId === r.id,
+      onPress: () => setReservationId(r.id),
+    })),
+  ];
+
+  const splitItems: OptionItem[] = [
+    ...people.map((p) => ({
+      key: p.id,
+      label: p.name,
+      leading: (
+        <View style={[styles.avatar, { backgroundColor: theme.colors.primaryContainer }]}>
+          <Text variant="titleSmall" style={{ color: theme.colors.onPrimaryContainer }}>
+            {p.name.slice(0, 1).toUpperCase()}
+          </Text>
+        </View>
+      ),
+      selected: splitIds.includes(p.id),
+      onPress: () => togglePerson(p.id),
+    })),
+    {
+      key: 'add-person',
+      label: 'Add person',
+      leading: <MaterialCommunityIcons name="account-plus-outline" size={26} color={theme.colors.primary} />,
+      onPress: () => {
+        setAddPersonError(null);
+        setAddPersonVisible(true);
+      },
+    },
+  ];
+
+  const ocrBannerMessage = !scanned
+    ? null
+    : scanned.ocrFailed
+      ? "Couldn't read this receipt automatically. Please review and fill in the details below."
+      : scanned.confidence === 'low'
+        ? 'We filled in a best guess from this receipt — please double check the amount, merchant, and date before saving.'
+        : null;
+
+  const overAvailable = !!selectedAccount && reservationId === null && total > Number(selectedAccount.available) + 0.005;
+  const splitSummary = splitIds
+    .map((id) => `${people.find((p) => p.id === id)?.name ?? 'Someone'} ${formatCurrency(shareFor(id))}`)
+    .join(' · ');
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-    <DismissKeyboardView>
-    <ScrollView style={{ backgroundColor: theme.colors.background }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      {scanned?.ocrFailed && (
-        <Text
-          variant="bodySmall"
-          style={[
-            styles.ocrBanner,
-            { backgroundColor: theme.colors.secondaryContainer, color: theme.colors.onSecondaryContainer },
-          ]}
-        >
-          Couldn't read this receipt automatically. Please review and fill in the details below.
-        </Text>
-      )}
-
-      <AppTextInput
-        label="Amount"
-        value={amount}
-        onChangeText={setAmount}
-        keyboardType="decimal-pad"
-        inputAccessoryViewID={DONE_ACCESSORY_ID}
-        left={<AppTextInput.Affix text="₱" />}
-        style={styles.field}
-      />
-
-      <Text variant="labelLarge" style={styles.label}>
-        Category
-      </Text>
-      <View style={styles.chipWrap}>
-        {CATEGORIES.map((c) => (
-          <Chip key={c} selected={category === c} onPress={() => setCategory(c)} style={styles.chip} mode={category === c ? 'flat' : 'outlined'}>
-            {c}
-          </Chip>
-        ))}
-      </View>
-
-      <Text variant="labelLarge" style={styles.label}>
-        Date
-      </Text>
-      <DateField value={date} onChange={setDate} />
-
-      <AppTextInput label="Merchant (optional)" value={merchant} onChangeText={setMerchant} style={styles.field} />
-
-      <Text variant="labelLarge" style={styles.label}>
-        Payment Method
-      </Text>
-      <View style={styles.chipWrap}>
-        {PAYMENT_METHODS.map((m) => (
-          <Chip
-            key={m.value}
-            selected={paymentMethod === m.value}
-            onPress={() => setPaymentMethod(m.value)}
-            style={styles.chip}
-            mode={paymentMethod === m.value ? 'flat' : 'outlined'}
-          >
-            {m.label}
-          </Chip>
-        ))}
-      </View>
-
-      {paymentMethod === 'credit_card' && (
-        <View style={styles.field}>
-          <Text variant="labelLarge" style={styles.label}>
-            Credit Card
-          </Text>
-          {cards.length === 0 ? (
-            <Text variant="bodySmall" style={styles.hint}>
-              No credit cards yet. Add one from the Credit Cards tab.
-            </Text>
-          ) : (
-            <Menu
-              visible={isCardMenuVisible}
-              onDismiss={() => setCardMenuVisible(false)}
-              anchor={
-                <Button mode="outlined" onPress={() => setCardMenuVisible(true)} icon="credit-card-outline">
-                  {selectedCard ? selectedCard.name : 'Select a card'}
-                </Button>
-              }
+      <DismissKeyboardView>
+        <ScrollView style={{ backgroundColor: theme.colors.background }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          {ocrBannerMessage && (
+            <Text
+              variant="bodySmall"
+              style={[styles.ocrBanner, { backgroundColor: theme.colors.secondaryContainer, color: theme.colors.onSecondaryContainer }]}
             >
-              {cards.map((c) => (
-                <Menu.Item
-                  key={c.id}
-                  title={`${c.name} (${c.bank})`}
-                  onPress={() => {
-                    setCreditCardId(c.id);
-                    setCardMenuVisible(false);
-                  }}
-                />
-              ))}
-            </Menu>
+              {ocrBannerMessage}
+            </Text>
           )}
-        </View>
-      )}
 
-      {paymentMethod !== 'credit_card' && (
-        <View style={styles.field}>
-          <Text variant="labelLarge" style={styles.label}>
-            Account (optional)
-          </Text>
-          {accounts.length === 0 ? (
-            <Text variant="bodySmall" style={styles.hint}>
-              No accounts yet. Add one from the Accounts tab to track this expense against its balance.
-            </Text>
-          ) : (
-            <Menu
-              visible={isAccountMenuVisible}
-              onDismiss={() => setAccountMenuVisible(false)}
-              anchor={
-                <Button mode="outlined" onPress={() => setAccountMenuVisible(true)} icon="bank-outline">
-                  {selectedAccount ? selectedAccount.name : 'None selected'}
-                </Button>
-              }
-            >
-              <Menu.Item
-                title="None"
-                onPress={() => {
-                  setBankAccountId(null);
-                  setAccountMenuVisible(false);
-                }}
-              />
-              {accounts.map((a) => (
-                <Menu.Item
-                  key={a.id}
-                  title={a.name}
-                  onPress={() => {
-                    setBankAccountId(a.id);
-                    setAccountMenuVisible(false);
-                  }}
-                />
-              ))}
-            </Menu>
+          {!isEditing && !scanned && (
+            <Button mode="outlined" icon="camera-outline" onPress={handleScanReceipt} style={styles.scanButton} contentStyle={styles.scanButtonContent}>
+              Scan receipt instead
+            </Button>
           )}
-        </View>
-      )}
-
-      <View style={styles.field}>
-        {splitRows.length === 0 ? (
-          <Button mode="outlined" onPress={openSplitDialog} icon="account-multiple-plus-outline">
-            Add Split
-          </Button>
-        ) : (
-          <View>
-            <Text variant="labelLarge" style={styles.label}>
-              Split Expense
-            </Text>
-            <Text variant="bodyMedium" style={styles.hint}>
-              My Share: {formatCurrency(myShareText || '0')}
-            </Text>
-            {splitRows.map((r) => (
-              <Text key={r.personId} variant="bodyMedium" style={styles.hint}>
-                {r.name}: {formatCurrency(r.amountText || '0')}
-              </Text>
-            ))}
-            <Button mode="text" onPress={openSplitDialog} style={styles.editSplitButton}>
-              Edit Split
-            </Button>
-          </View>
-        )}
-      </View>
-
-      {errors.length > 0 && (
-        <View style={styles.field}>
-          {errors.map((e) => (
-            <Text key={e} style={[styles.error, { color: theme.colors.error }]} variant="bodySmall">
-              {e}
-            </Text>
-          ))}
-        </View>
-      )}
-
-      {apiError && (
-        <Text style={[styles.error, { color: theme.colors.error }]} variant="bodySmall">
-          {apiError}
-        </Text>
-      )}
-
-      <Button mode="contained" onPress={handleSave} loading={isSubmitting} disabled={isSubmitting} style={styles.saveButton}>
-        Save
-      </Button>
-
-      {scanned && (
-        <Button
-          mode="outlined"
-          onPress={() => navigation.replace('ReceiptCamera')}
-          disabled={isSubmitting}
-          style={styles.retakeButton}
-        >
-          Retake Receipt
-        </Button>
-      )}
-    </ScrollView>
-    </DismissKeyboardView>
-
-    <Portal>
-      <Dialog visible={isSplitDialogVisible} onDismiss={closeSplitDialog}>
-        <Dialog.Title>Split Expense</Dialog.Title>
-        <Dialog.Content>
-          <Text variant="bodyMedium" style={styles.hint}>
-            Total: {formatCurrency(amountValue)}
-          </Text>
-
-          <View style={styles.splitModeRow}>
-            <Button mode="outlined" compact onPress={handleEqualSplit}>
-              Equal Split
-            </Button>
-          </View>
 
           <AppTextInput
-            label="My Share"
-            value={myShareText}
-            onChangeText={setMyShareText}
+            label="Amount"
+            value={amount}
+            onChangeText={setAmount}
             keyboardType="decimal-pad"
             inputAccessoryViewID={DONE_ACCESSORY_ID}
             left={<AppTextInput.Affix text="₱" />}
-            style={styles.dialogField}
+            style={styles.field}
           />
 
-          {splitRows.map((row) => (
-            <View key={row.personId} style={styles.splitRow}>
+          <Text variant="labelLarge" style={styles.label}>
+            Category
+          </Text>
+          <View style={styles.section}>
+            <OptionRow items={categoryItems} />
+          </View>
+
+          <Text variant="labelLarge" style={styles.label}>
+            Pay with
+          </Text>
+          <View style={styles.section}>
+            <OptionRow items={payItems} />
+          </View>
+
+          {selectedAccount && reservationOptions.length > 0 && (
+            <>
+              <Text variant="labelLarge" style={styles.label}>
+                Pay from
+              </Text>
+              <View style={styles.section}>
+                <OptionRow items={setAsideItems} />
+              </View>
+            </>
+          )}
+
+          {overAvailable && (
+            <Text variant="bodySmall" style={[styles.hintText, { color: theme.colors.error }]}>
+              Only {formatCurrency(selectedAccount!.available)} is available in this account.
+              {reservationOptions.length > 0 ? ' Pick a set-aside above, or lower the amount.' : ' Lower the amount or pick another account.'}
+            </Text>
+          )}
+
+          <Text variant="labelLarge" style={styles.label}>
+            Split with
+          </Text>
+          <View style={styles.section}>
+            <OptionRow items={splitItems} />
+          </View>
+          {splitIds.length > 0 && (
+            <View style={styles.splitSummary}>
+              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                {customAmounts ? 'Custom split' : 'Equal split'}: you {formatCurrency(myShare)} · {splitSummary}
+              </Text>
+              <Button mode="text" compact onPress={openCustomDialog} style={styles.customButton}>
+                Custom amounts
+              </Button>
+            </View>
+          )}
+
+          <Text variant="labelLarge" style={styles.label}>
+            Date
+          </Text>
+          <DateField value={date} onChange={setDate} />
+
+          <AppTextInput label="Merchant (optional)" value={merchant} onChangeText={setMerchant} style={styles.field} />
+
+          {errors.length > 0 && (
+            <View style={styles.field}>
+              {errors.map((e) => (
+                <Text key={e} style={[styles.error, { color: theme.colors.error }]} variant="bodySmall">
+                  {e}
+                </Text>
+              ))}
+            </View>
+          )}
+
+          {apiError && (
+            <Text style={[styles.error, { color: theme.colors.error }]} variant="bodySmall">
+              {apiError}
+            </Text>
+          )}
+
+          <Button mode="contained" onPress={handleSave} loading={isSubmitting} disabled={isSubmitting} style={styles.saveButton} contentStyle={styles.saveButtonContent}>
+            Save
+          </Button>
+
+          {scanned && (
+            <Button mode="outlined" onPress={() => navigation.replace('ReceiptCamera')} disabled={isSubmitting} style={styles.retakeButton}>
+              Retake Receipt
+            </Button>
+          )}
+        </ScrollView>
+      </DismissKeyboardView>
+
+      <Portal>
+        <Dialog visible={isCustomDialogVisible} onDismiss={() => setCustomDialogVisible(false)}>
+          <Dialog.Title>Custom amounts</Dialog.Title>
+          <Dialog.Content>
+            <Text variant="bodyMedium" style={styles.dialogHint}>
+              Total: {formatCurrency(total)}
+            </Text>
+            <AppTextInput
+              label="Your share"
+              value={draftMyShare}
+              onChangeText={setDraftMyShare}
+              keyboardType="decimal-pad"
+              inputAccessoryViewID={DONE_ACCESSORY_ID}
+              left={<AppTextInput.Affix text="₱" />}
+              style={styles.dialogField}
+            />
+            {splitIds.map((id) => (
               <AppTextInput
-                label={row.name}
-                value={row.amountText}
-                onChangeText={(text) => setSplitRows((rows) => rows.map((r) => (r.personId === row.personId ? { ...r, amountText: text } : r)))}
+                key={id}
+                label={people.find((p) => p.id === id)?.name ?? 'Someone'}
+                value={draftAmounts[id] ?? ''}
+                onChangeText={(text) => setDraftAmounts((prev) => ({ ...prev, [id]: text }))}
                 keyboardType="decimal-pad"
                 inputAccessoryViewID={DONE_ACCESSORY_ID}
                 left={<AppTextInput.Affix text="₱" />}
-                style={styles.splitRowInput}
+                style={styles.dialogField}
               />
-              <IconButton icon="close" onPress={() => removePersonFromSplit(row.personId)} />
-            </View>
-          ))}
+            ))}
+            {customError && (
+              <Text style={[styles.error, { color: theme.colors.error }]} variant="bodySmall">
+                {customError}
+              </Text>
+            )}
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={resetToEqual}>Reset to equal</Button>
+            <Button onPress={applyCustomAmounts}>Done</Button>
+          </Dialog.Actions>
+        </Dialog>
 
-          <Button mode="text" onPress={() => setAddPersonVisible(true)} icon="plus" style={styles.addPersonButton}>
-            Add Person
-          </Button>
-
-          <Text
-            variant="bodyMedium"
-            style={[styles.splitTotalText, { color: Math.abs(splitTotal - amountValue) > 0.005 ? theme.colors.error : undefined }]}
-          >
-            Split Total: {formatCurrency(splitTotal)} / {formatCurrency(amountValue)}
-          </Text>
-
-          {splitError && (
-            <Text style={[styles.error, { color: theme.colors.error }]} variant="bodySmall">
-              {splitError}
-            </Text>
-          )}
-        </Dialog.Content>
-        <Dialog.Actions>
-          <Button onPress={clearSplit}>Remove Split</Button>
-          <Button onPress={closeSplitDialog}>Done</Button>
-        </Dialog.Actions>
-      </Dialog>
-
-      <Dialog visible={isAddPersonVisible} onDismiss={() => setAddPersonVisible(false)}>
-        <Dialog.Title>Add Person</Dialog.Title>
-        <Dialog.Content>
-          {availablePeople.length > 0 && (
-            <>
-              {availablePeople.map((p, index) => (
-                <View key={p.id}>
-                  <List.Item title={p.name} onPress={() => addPersonToSplit(p)} />
-                  {index < availablePeople.length - 1 && <Divider />}
-                </View>
-              ))}
-              <Divider style={styles.addPersonDivider} />
-            </>
-          )}
-          <AppTextInput
-            label="New person's name"
-            value={newPersonName}
-            onChangeText={setNewPersonName}
-            placeholder="Mau"
-            style={styles.dialogField}
-          />
-          <Button mode="contained" onPress={handleCreateAndAddPerson} disabled={!newPersonName.trim()}>
-            Add
-          </Button>
-        </Dialog.Content>
-        <Dialog.Actions>
-          <Button onPress={() => setAddPersonVisible(false)}>Cancel</Button>
-        </Dialog.Actions>
-      </Dialog>
-    </Portal>
-    <DoneAccessory />
+        <Dialog visible={isAddPersonVisible} onDismiss={() => setAddPersonVisible(false)}>
+          <Dialog.Title>Add person</Dialog.Title>
+          <Dialog.Content>
+            <AppTextInput label="Name" value={newPersonName} onChangeText={setNewPersonName} placeholder="Mau" style={styles.dialogField} autoFocus />
+            {addPersonError && (
+              <Text style={[styles.error, { color: theme.colors.error }]} variant="bodySmall">
+                {addPersonError}
+              </Text>
+            )}
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setAddPersonVisible(false)}>Cancel</Button>
+            <Button onPress={handleAddPerson} disabled={!newPersonName.trim()}>
+              Add
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
+      <DoneAccessory />
     </KeyboardAvoidingView>
   );
 }
@@ -521,68 +582,65 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
-    paddingBottom: 32,
+    paddingHorizontal: screenPadding,
+    paddingTop: spacing.base,
+    paddingBottom: spacing.xxl,
   },
   field: {
-    marginBottom: 16,
+    marginBottom: spacing.base,
   },
   label: {
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
-  chipWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 16,
+  section: {
+    marginBottom: spacing.lg,
   },
-  chip: {
-    marginRight: 0,
+  hintText: {
+    marginTop: -spacing.sm,
+    marginBottom: spacing.lg,
   },
-  hint: {
-    opacity: 0.6,
+  splitSummary: {
+    marginTop: -spacing.sm,
+    marginBottom: spacing.lg,
   },
-  editSplitButton: {
+  customButton: {
     alignSelf: 'flex-start',
-    marginTop: 4,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scanButton: {
+    marginBottom: spacing.base,
+  },
+  scanButtonContent: {
+    height: 44,
   },
   error: {
     marginBottom: 4,
   },
   saveButton: {
-    marginTop: 8,
+    marginTop: spacing.sm,
+  },
+  saveButtonContent: {
+    height: 52,
   },
   retakeButton: {
-    marginTop: 12,
+    marginTop: spacing.md,
   },
   ocrBanner: {
     padding: 12,
     borderRadius: 8,
     marginBottom: 16,
   },
+  dialogHint: {
+    opacity: 0.6,
+    marginBottom: spacing.md,
+  },
   dialogField: {
-    marginBottom: 12,
-  },
-  splitModeRow: {
-    flexDirection: 'row',
-    marginBottom: 12,
-  },
-  splitRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  splitRowInput: {
-    flex: 1,
-    marginBottom: 8,
-  },
-  addPersonButton: {
-    alignSelf: 'flex-start',
-  },
-  addPersonDivider: {
-    marginVertical: 8,
-  },
-  splitTotalText: {
-    marginTop: 12,
-    fontWeight: '600',
+    marginBottom: spacing.md,
   },
 });

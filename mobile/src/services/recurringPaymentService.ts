@@ -124,6 +124,7 @@ export const recurringPaymentService = {
       credit_card_id: row.credit_card_id,
       bank_account_id: null,
       receipt_image: null,
+      source: 'manual',
     });
     await recurringPaymentRepository.setNextDate(id, advanceDate(row.next_date, row.frequency));
   },

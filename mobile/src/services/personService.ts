@@ -51,6 +51,9 @@ export interface PersonPayment {
 export interface PersonDetail {
   person: Person;
   outstanding: string;
+  // Balance owed from before the app was used (not tied to any expense) -
+  // needed so an itemised breakdown reconciles with the total.
+  openingOwed: string;
   shares: PersonExpenseShare[];
   payments: PersonPayment[];
 }
@@ -122,6 +125,7 @@ export const personService = {
     return {
       person: toPerson(person, outstandingCents),
       outstanding: fromCents(outstandingCents),
+      openingOwed: fromCents(person.opening_owed_cents),
       shares,
       payments: paymentRows.map((p) => ({
         id: p.id,

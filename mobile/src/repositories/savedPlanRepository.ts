@@ -69,6 +69,47 @@ export const savedPlanRepository = {
     return (await this.findById(id))!;
   },
 
+  async replaceAllocations(planId: string, allocations: { name: string; amountCents: number }[]): Promise<void> {
+    const db = await getDb();
+    const now = nowISO();
+    await db.runAsync('DELETE FROM saved_plan_allocations WHERE plan_id = ?', planId);
+    for (const allocation of allocations) {
+      await db.runAsync(
+        'INSERT INTO saved_plan_allocations (id, plan_id, name, amount_cents, created_at) VALUES (?, ?, ?, ?, ?)',
+        newId(),
+        planId,
+        allocation.name,
+        allocation.amountCents,
+        now
+      );
+    }
+  },
+
+  async update(
+    id: string,
+    input: {
+      name: string;
+      expectedDate: string | null;
+      plannedAmountCents: number | null;
+      note: string | null;
+      allocations: { name: string; amountCents: number }[];
+    }
+  ): Promise<SavedPlanRow | null> {
+    const db = await getDb();
+    await db.withTransactionAsync(async () => {
+      await db.runAsync(
+        'UPDATE saved_plans SET name = ?, expected_date = ?, planned_amount_cents = ?, note = ? WHERE id = ?',
+        input.name,
+        input.expectedDate,
+        input.plannedAmountCents,
+        input.note,
+        id
+      );
+      await this.replaceAllocations(id, input.allocations);
+    });
+    return this.findById(id);
+  },
+
   async markUsed(id: string): Promise<void> {
     const db = await getDb();
     await db.runAsync('UPDATE saved_plans SET used_at = ? WHERE id = ?', nowISO(), id);

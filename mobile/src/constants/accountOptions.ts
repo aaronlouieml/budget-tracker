@@ -1,4 +1,4 @@
-import type { AccountType, ReservationPurpose } from '../services/bankAccountService';
+import type { AccountType, ReservationPurpose, IncomingSourceType } from '../services/bankAccountService';
 import type { PastelFamily } from '../theme/colors';
 
 export const ACCOUNT_TYPES: { label: string; value: AccountType }[] = [
@@ -21,4 +21,15 @@ export const RESERVATION_PURPOSES: { label: string; value: ReservationPurpose }[
   { label: 'Credit Card Payment', value: 'credit_card_payment' },
   { label: 'Bill', value: 'bill' },
   { label: 'Other', value: 'other' },
+];
+
+// How "Coming In" / deposited money is labeled, so the source is clear at a
+// glance (e.g. distinct from money that came in via a Money Owed repayment,
+// which is its own 'reimbursement' activity type, not one of these).
+export const INCOMING_SOURCE_TYPES: { label: string; value: IncomingSourceType }[] = [
+  { label: 'Salary', value: 'salary' },
+  { label: 'Refund', value: 'refund' },
+  { label: 'Gift', value: 'gift' },
+  { label: 'Other', value: 'other' },
+  { label: 'Manual', value: 'manual' },
 ];

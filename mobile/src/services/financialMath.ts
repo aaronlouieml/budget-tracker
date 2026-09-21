@@ -29,3 +29,9 @@ export function calculatePayWhatIOwe(myResponsibilityCents: number, outstandingC
 export function calculateAvailable(balanceCents: number, reservedCents: number): number {
   return balanceCents - reservedCents;
 }
+
+// What's still owed on a credit card: any balance it already carried when
+// tracking started, plus everything charged since, minus what's been paid.
+export function calculateOutstanding(openingBalanceCents: number, expensesCents: number, paymentsCents: number): number {
+  return openingBalanceCents + expensesCents - paymentsCents;
+}

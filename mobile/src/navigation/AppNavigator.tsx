@@ -1,10 +1,11 @@
 import { StyleSheet, View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import type { NavigatorScreenParams } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from 'react-native-paper';
 
 import HomeNavigator from './HomeNavigator';
-import ExpensesNavigator from './ExpensesNavigator';
+import ExpensesNavigator, { type ExpensesStackParamList } from './ExpensesNavigator';
 import AccountsNavigator from './AccountsNavigator';
 import PeopleNavigator from './PeopleNavigator';
 import { radii } from '../theme/radii';
@@ -14,7 +15,8 @@ import { radii } from '../theme/radii';
 // just not a top-level destination, per the "fewer pages" goal.
 export type RootTabParamList = {
   Home: undefined;
-  Expenses: undefined;
+  // Nested so Home can open the Add Expense form directly.
+  Expenses: NavigatorScreenParams<ExpensesStackParamList> | undefined;
   Accounts: undefined;
   'Money Owed': undefined;
 };

@@ -3,7 +3,7 @@ import { creditCardRepository, type CreditCardRow } from '../repositories/credit
 import { bankAccountRepository } from '../repositories/bankAccountRepository';
 import { toCents, fromCents } from '../utils/money';
 import { toExpense, type Expense } from './expenseService';
-import { calculatePayWhatIOwe } from './financialMath';
+import { calculateOutstanding, calculatePayWhatIOwe } from './financialMath';
 import { ServiceError } from './errors';
 
 const DUE_SOON_DAYS = 7;
@@ -162,7 +162,7 @@ export const creditCardService = {
     const totalExpenses = transactions.reduce((sum: number, t: any) => sum + t.amount_cents, 0);
     const totalPayments = payments.reduce((sum, p) => sum + p.amount_cents, 0);
     return {
-      card: toCreditCard(card, totalExpenses - totalPayments, responsibility),
+      card: toCreditCard(card, calculateOutstanding(card.opening_balance_cents, totalExpenses, totalPayments), responsibility),
       transactions: transactions.map((t: any) => {
         const sharesTotal = shareTotals.get(t.id) ?? 0;
         return { ...toExpense(t), myShare: fromCents(t.amount_cents - sharesTotal), othersOwe: fromCents(sharesTotal) };
@@ -202,6 +202,7 @@ export const creditCardService = {
     if (!card) throw new ServiceError(['Credit card not found'], 404);
     const account = await bankAccountRepository.findById(input.bankAccountId);
     if (!account) throw new ServiceError(['Bank account not found'], 404);
+    if (account.balance_cents < 0) throw new ServiceError(['Cannot pay from a negative balance']);
 
     const outstandingCents = await creditCardRepository.outstandingForCard(cardId);
     const amountCents = toCents(input.amount);
@@ -236,7 +237,7 @@ export const creditCardService = {
       if (reservation) {
         const remaining = reservation.amount_cents - amountCents;
         if (remaining <= 1) {
-          await bankAccountRepository.setReservationAmount(reservation.id, 0, 'fulfilled');
+          await bankAccountRepository.setReservationAmount(reservation.id, 0, 'fulfilled', 'payment');
           updatedReservation = { id: reservation.id, amount: '0.00', status: 'fulfilled' };
         } else {
           await bankAccountRepository.setReservationAmount(reservation.id, remaining, 'reserved');

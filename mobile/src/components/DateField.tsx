@@ -63,7 +63,9 @@ export default function DateField({ value, onChange }: Props) {
           mode="date"
           display={Platform.OS === 'ios' ? 'inline' : 'default'}
           onChange={(_event, selectedDate) => {
-            setShowPicker(Platform.OS === 'ios');
+            // Close on any result (picked a day or dismissed) so the inline
+            // iOS calendar doesn't stay open after a selection.
+            setShowPicker(false);
             if (selectedDate) {
               onChange(toISODate(selectedDate));
             }

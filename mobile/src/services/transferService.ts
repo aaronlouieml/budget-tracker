@@ -46,6 +46,7 @@ export const transferService = {
 
     const fromAccount = await bankAccountRepository.findById(input.fromAccountId);
     if (!fromAccount) throw new ServiceError(['Source account not found'], 404);
+    if (fromAccount.balance_cents < 0) throw new ServiceError(['Cannot transfer from a negative balance']);
     const toAccount = await bankAccountRepository.findById(input.toAccountId);
     if (!toAccount) throw new ServiceError(['Destination account not found'], 404);
 
