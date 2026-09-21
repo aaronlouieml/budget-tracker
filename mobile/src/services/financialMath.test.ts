@@ -1,4 +1,4 @@
-import { calculateAvailable, calculatePayWhatIOwe, calculateResponsibility } from './financialMath';
+import { calculateAvailable, calculateOutstanding, calculatePayWhatIOwe, calculateResponsibility } from './financialMath';
 
 describe('calculateResponsibility', () => {
   it('splits a single shared expense into my share and others owe', () => {
@@ -57,5 +57,19 @@ describe('calculateAvailable', () => {
 
   it('is unaffected by anything other than balance and reservations', () => {
     expect(calculateAvailable(1000, 0)).toBe(1000);
+  });
+});
+
+describe('calculateOutstanding', () => {
+  it('shows just the opening balance for a brand-new card with no activity', () => {
+    expect(calculateOutstanding(500_000, 0, 0)).toBe(500_000);
+  });
+
+  it('adds new charges and subtracts payments on top of the opening balance', () => {
+    expect(calculateOutstanding(500_000, 300_000, 200_000)).toBe(600_000);
+  });
+
+  it('is zero when fully paid off', () => {
+    expect(calculateOutstanding(0, 300_000, 300_000)).toBe(0);
   });
 });

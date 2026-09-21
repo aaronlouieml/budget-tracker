@@ -43,7 +43,14 @@ export async function seedTestData(): Promise<void> {
 
   const account = await bankAccountService.createAccount({ name: 'BPI Savings', type: 'savings', balance: 50_000 });
   const card = await creditCardService.createCard({ name: 'BPI Mastercard', bank: 'BPI', dueDate: 25 });
-  await bankAccountService.createReservation(account.id, { name: 'Emergency Fund', amount: 20_000, purpose: 'other', creditCardId: null });
+  await bankAccountService.createReservation(account.id, {
+    name: 'Emergency Fund',
+    amount: 20_000,
+    purpose: 'other',
+    creditCardId: null,
+    category: 'Savings Goal',
+    plannedDate: null,
+  });
 
   const mau = await personService.createPerson('Mau');
 
@@ -56,6 +63,7 @@ export async function seedTestData(): Promise<void> {
     credit_card_id: card.id,
     bank_account_id: null,
     receipt_image: null,
+    source: 'manual',
     shares: [{ personId: mau.id, amount: 1_000 }],
   });
 
@@ -83,6 +91,7 @@ export async function seedTestData(): Promise<void> {
     credit_card_id: secondCard.id,
     bank_account_id: null,
     receipt_image: null,
+    source: 'manual',
     shares: [{ personId: jam.id, amount: 1_500 }],
   });
   await personService.recordPayment(jam.id, { amount: 800, bankAccountId: account.id, date: today });

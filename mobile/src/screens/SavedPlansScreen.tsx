@@ -36,6 +36,7 @@ export default function SavedPlansScreen() {
   const [menuForId, setMenuForId] = useState<string | null>(null);
 
   const [isFormVisible, setFormVisible] = useState(false);
+  const [editing, setEditing] = useState<SavedPlan | null>(null);
   const [name, setName] = useState('');
   const [hasExpectedDate, setHasExpectedDate] = useState(false);
   const [expectedDate, setExpectedDate] = useState(todayISODate());
@@ -78,12 +79,26 @@ export default function SavedPlansScreen() {
   );
 
   function openCreateForm() {
+    setEditing(null);
     setName('');
     setHasExpectedDate(false);
     setExpectedDate(todayISODate());
     setPlannedAmount('');
     setNote('');
     setAllocations([newAllocation()]);
+    setFormErrors([]);
+    setFormVisible(true);
+  }
+
+  function openEditForm(plan: SavedPlan) {
+    setMenuForId(null);
+    setEditing(plan);
+    setName(plan.name);
+    setHasExpectedDate(plan.expected_date !== null);
+    setExpectedDate(plan.expected_date ?? todayISODate());
+    setPlannedAmount(plan.planned_amount ?? '');
+    setNote(plan.note ?? '');
+    setAllocations(plan.allocations.length > 0 ? plan.allocations.map((a) => ({ key: a.id, name: a.name, amount: a.amount })) : [newAllocation()]);
     setFormErrors([]);
     setFormVisible(true);
   }
@@ -108,7 +123,11 @@ export default function SavedPlansScreen() {
     setIsSubmitting(true);
     setFormErrors([]);
     try {
-      await savedPlanService.createPlan(input);
+      if (editing) {
+        await savedPlanService.update(editing.id, input);
+      } else {
+        await savedPlanService.createPlan(input);
+      }
       setFormVisible(false);
       await load();
     } catch (err) {
@@ -209,6 +228,7 @@ export default function SavedPlansScreen() {
                       anchor={<IconButton icon="dots-vertical" onPress={() => setMenuForId(plan.id)} />}
                     >
                       <Menu.Item title="Import" leadingIcon="tray-arrow-down" onPress={() => openImportDialog(plan)} />
+                      <Menu.Item title="Edit" leadingIcon="pencil-outline" onPress={() => openEditForm(plan)} />
                       <Menu.Item title="Delete" leadingIcon="delete-outline" onPress={() => handleDelete(plan)} />
                     </Menu>
                   </View>
@@ -244,7 +264,7 @@ export default function SavedPlansScreen() {
 
       <Portal>
         <Dialog visible={isFormVisible} onDismiss={() => setFormVisible(false)}>
-          <Dialog.Title>New Saved Plan</Dialog.Title>
+          <Dialog.Title>{editing ? 'Edit Saved Plan' : 'New Saved Plan'}</Dialog.Title>
           <Dialog.ScrollArea style={styles.dialogScrollArea}>
             <ScrollView contentContainerStyle={styles.dialogContent} keyboardShouldPersistTaps="handled">
               <AppTextInput label="Plan Name" value={name} onChangeText={setName} placeholder="13th Month Pay" style={styles.dialogField} />

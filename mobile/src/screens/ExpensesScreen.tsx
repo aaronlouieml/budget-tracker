@@ -12,6 +12,7 @@ import { confirmDestructive } from '../utils/confirm';
 import CategoryIcon from '../components/CategoryIcon';
 import AmountText from '../components/AmountText';
 import EmptyState from '../components/EmptyState';
+import StatusPill from '../components/StatusPill';
 import { spacing, screenPadding } from '../theme/spacing';
 import type { ExpensesStackParamList } from '../navigation/ExpensesNavigator';
 
@@ -133,6 +134,11 @@ export default function ExpensesScreen({ navigation }: Props) {
                     {item.category}
                     {item.payment_method ? ' · ' + (PAYMENT_METHOD_LABELS[item.payment_method] ?? item.payment_method) : ''}
                   </Text>
+                  {item.source === 'scan' && (
+                    <View style={styles.scannedBadgeRow}>
+                      <StatusPill label="SCANNED" tone="blue" />
+                    </View>
+                  )}
                 </View>
                 <AmountText value={`-${formatCurrency(item.amount)}`} variant="titleSmall" style={styles.rowAmount} />
                 <IconButton icon="delete-outline" size={18} onPress={() => handleDelete(item)} />
@@ -211,6 +217,9 @@ const styles = StyleSheet.create({
   },
   rowText: {
     flex: 1,
+  },
+  scannedBadgeRow: {
+    marginTop: 3,
   },
   rowAmount: {
     marginLeft: spacing.xs,

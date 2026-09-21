@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
-import { ActivityIndicator, Avatar, Button, Dialog, Divider, IconButton, Menu, Portal, Text, useTheme } from 'react-native-paper';
+import { Keyboard, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Avatar, Button, Dialog, Divider, IconButton, Menu, Portal, Snackbar, Text, useTheme } from 'react-native-paper';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import * as Clipboard from 'expo-clipboard';
 
 import { personService, type PersonDetail } from '../services/personService';
 import { bankAccountService, type BankAccount } from '../services/bankAccountService';
@@ -10,6 +11,7 @@ import { ServiceError } from '../services/errors';
 import { PAYMENT_METHODS } from '../constants/expenseOptions';
 import { formatCurrency, formatDate, todayISODate } from '../utils/format';
 import { confirmDestructive } from '../utils/confirm';
+import { formatOwedMessage } from '../utils/owedMessage';
 import DismissKeyboardView from '../components/DismissKeyboardView';
 import DoneAccessory, { DONE_ACCESSORY_ID } from '../components/DoneAccessory';
 import AppTextInput from '../components/AppTextInput';
@@ -33,6 +35,8 @@ export default function PersonDetailScreen({ route, navigation }: Props) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
+
+  const [flash, setFlash] = useState<string | null>(null);
 
   const [isPayDialogVisible, setPayDialogVisible] = useState(false);
   const [payAmount, setPayAmount] = useState('');
@@ -90,6 +94,20 @@ export default function PersonDetailScreen({ route, navigation }: Props) {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detail]);
+
+  async function handleCopyBalance() {
+    if (!detail) return;
+    await Clipboard.setStringAsync(
+      formatOwedMessage({
+        name: detail.person.name,
+        total: detail.outstanding,
+        openingOwed: detail.openingOwed,
+        shares: detail.shares,
+        payments: detail.payments,
+      })
+    );
+    setFlash('Message copied');
+  }
 
   function openPayDialog() {
     setPayAmount(detail ? detail.outstanding : '');
@@ -149,7 +167,12 @@ export default function PersonDetailScreen({ route, navigation }: Props) {
   return (
     <>
       <DismissKeyboardView>
-      <ScrollView style={{ backgroundColor: theme.colors.background }} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={{ backgroundColor: theme.colors.background }}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={Keyboard.dismiss}
+      >
         <View style={styles.summary}>
           <Avatar.Text size={56} label={person.name.slice(0, 1).toUpperCase()} style={{ backgroundColor: theme.colors.primaryContainer }} color={theme.colors.onPrimaryContainer} />
           <Text variant="displaySmall" style={[tabularNumberStyle, styles.netAmount]}>
@@ -165,6 +188,11 @@ export default function PersonDetailScreen({ route, navigation }: Props) {
                 Owes You
               </Text>
               <AmountText value={formatCurrency(person.owesMe)} variant="titleMedium" tone="positive" />
+              {Number(person.owesMe) > 0 && (
+                <Button compact mode="text" icon="content-copy" onPress={handleCopyBalance} labelStyle={styles.copyBalanceLabel}>
+                  Copy Message
+                </Button>
+              )}
             </View>
             <View style={styles.summaryCol}>
               <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
@@ -298,6 +326,10 @@ export default function PersonDetailScreen({ route, navigation }: Props) {
         </Dialog>
       </Portal>
       <DoneAccessory />
+
+      <Snackbar visible={!!flash} onDismiss={() => setFlash(null)} duration={2000}>
+        {flash}
+      </Snackbar>
     </>
   );
 }
@@ -332,6 +364,11 @@ const styles = StyleSheet.create({
   summaryCol: {
     alignItems: 'center',
     gap: 2,
+  },
+  copyBalanceLabel: {
+    fontSize: 11,
+    marginVertical: 2,
+    marginHorizontal: 4,
   },
   payButton: {
     marginTop: spacing.base,

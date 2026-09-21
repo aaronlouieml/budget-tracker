@@ -3,6 +3,7 @@ import { expenseRepository, type ExpenseRow } from '../repositories/expenseRepos
 import { bankAccountRepository } from '../repositories/bankAccountRepository';
 import { personRepository } from '../repositories/personRepository';
 import { toCents, fromCents } from '../utils/money';
+import { calculateAvailable } from './financialMath';
 import { ServiceError } from './errors';
 
 export interface Expense {
@@ -15,6 +16,8 @@ export interface Expense {
   credit_card_id: string | null;
   bank_account_id: string | null;
   receipt_image: string | null;
+  source: 'manual' | 'scan';
+  reservation_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -45,6 +48,10 @@ export interface ExpenseInput {
   credit_card_id: string | null;
   bank_account_id: string | null;
   receipt_image: string | null;
+  source: 'manual' | 'scan';
+  // Pay from this set-aside (must belong to bank_account_id) instead of the
+  // account's available money.
+  reservation_id?: string | null;
   shares?: ExpenseShareInput[];
 }
 
@@ -59,6 +66,8 @@ export function toExpense(row: ExpenseRow): Expense {
     credit_card_id: row.credit_card_id,
     bank_account_id: row.bank_account_id,
     receipt_image: row.receipt_image,
+    source: row.source as 'manual' | 'scan',
+    reservation_id: row.reservation_id ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -70,6 +79,7 @@ function validateInput(input: ExpenseInput) {
   if (!input.category?.trim()) errors.push('category is required');
   if (!input.date) errors.push('date is required');
   if (input.credit_card_id && input.bank_account_id) errors.push('an expense cannot have both a credit card and a bank account');
+  if (input.reservation_id && !input.bank_account_id) errors.push('a set-aside can only be used with a bank account');
   if (errors.length > 0) throw new ServiceError(errors);
 }
 
@@ -104,6 +114,55 @@ async function validateShares(shares: ExpenseShareInput[] | undefined, expenseAm
   return result;
 }
 
+// Takes the money for an expense out of a bank account: either from a
+// specific set-aside (reducing/fulfilling it) or from the account's available
+// money (which can't exceed balance minus what's set aside). Must run inside
+// a transaction. Returns how much of the set-aside was consumed (null when
+// paid from available money) so it can be restored if the expense changes.
+async function fundFromAccount(accountId: string, amountCents: number, reservationId: string | null): Promise<number | null> {
+  if (reservationId) {
+    const reservation = await bankAccountRepository.findReservation(accountId, reservationId);
+    if (!reservation || reservation.status !== 'reserved') throw new ServiceError(['That set-aside is no longer available']);
+    if (amountCents > reservation.amount_cents + 1) {
+      throw new ServiceError([`Amount exceeds the set-aside (${fromCents(reservation.amount_cents)} left)`]);
+    }
+    await bankAccountRepository.adjustBalance(accountId, -amountCents);
+    const remaining = reservation.amount_cents - amountCents;
+    if (remaining <= 1) {
+      await bankAccountRepository.setReservationAmount(reservation.id, 0, 'fulfilled', 'payment');
+      return reservation.amount_cents;
+    }
+    await bankAccountRepository.setReservationAmount(reservation.id, remaining, 'reserved');
+    return amountCents;
+  }
+
+  const account = await bankAccountRepository.findById(accountId);
+  if (!account) throw new ServiceError(['bank_account_id does not refer to a valid account']);
+  const reservedCents = await bankAccountRepository.reservedTotalForAccount(accountId);
+  const availableCents = calculateAvailable(account.balance_cents, reservedCents);
+  if (amountCents > availableCents + 1) {
+    throw new ServiceError([`Only ${fromCents(Math.max(0, availableCents))} available. Pick a set-aside to pay from, or lower the amount.`]);
+  }
+  await bankAccountRepository.adjustBalance(accountId, -amountCents);
+  return null;
+}
+
+// Undoes fundFromAccount for an existing expense: refunds the account and
+// gives back any set-aside it consumed. A set-aside the user has since
+// marked as used (or deleted) is left alone - only the refund applies.
+async function reverseFunding(row: ExpenseRow): Promise<void> {
+  if (!row.bank_account_id) return;
+  await bankAccountRepository.adjustBalance(row.bank_account_id, row.amount_cents);
+  if (!row.reservation_id || !row.reservation_used_cents) return;
+  const reservation = await bankAccountRepository.findReservationById(row.reservation_id);
+  if (!reservation) return;
+  if (reservation.status === 'reserved') {
+    await bankAccountRepository.setReservationAmount(reservation.id, reservation.amount_cents + row.reservation_used_cents, 'reserved');
+  } else if (reservation.fulfilled_via === 'payment') {
+    await bankAccountRepository.setReservationAmount(reservation.id, row.reservation_used_cents, 'reserved');
+  }
+}
+
 export const expenseService = {
   async listExpenses(): Promise<Expense[]> {
     const rows = await expenseRepository.listAll();
@@ -130,15 +189,19 @@ export const expenseService = {
   async createExpense(input: ExpenseInput): Promise<Expense> {
     validateInput(input);
     const shares = await validateShares(input.shares, input.amount);
-    if (input.bank_account_id && !(await bankAccountRepository.findById(input.bank_account_id))) {
-      throw new ServiceError(['bank_account_id does not refer to a valid account']);
+    if (input.bank_account_id) {
+      const payingAccount = await bankAccountRepository.findById(input.bank_account_id);
+      if (!payingAccount) throw new ServiceError(['bank_account_id does not refer to a valid account']);
+      if (payingAccount.balance_cents < 0) throw new ServiceError(['Cannot charge an expense to a negative-balance account']);
     }
 
     const db = await getDb();
     let created: ExpenseRow | null = null;
     await db.withTransactionAsync(async () => {
+      const amountCents = toCents(input.amount);
+      const usedCents = input.bank_account_id ? await fundFromAccount(input.bank_account_id, amountCents, input.reservation_id ?? null) : null;
       created = await expenseRepository.insert({
-        amountCents: toCents(input.amount),
+        amountCents,
         category: input.category.trim(),
         date: input.date,
         merchant: input.merchant,
@@ -146,10 +209,10 @@ export const expenseService = {
         creditCardId: input.credit_card_id,
         bankAccountId: input.bank_account_id,
         receiptImage: input.receipt_image,
+        source: input.source,
+        reservationId: usedCents !== null ? input.reservation_id ?? null : null,
+        reservationUsedCents: usedCents,
       });
-      if (input.bank_account_id) {
-        await bankAccountRepository.adjustBalance(input.bank_account_id, -toCents(input.amount));
-      }
       if (shares.length > 0) {
         await expenseRepository.replaceShares(created.id, shares);
       }
@@ -162,26 +225,21 @@ export const expenseService = {
     const existing = await expenseRepository.findById(id);
     if (!existing) throw new ServiceError(['Expense not found'], 404);
     const shares = await validateShares(input.shares, input.amount);
-    if (input.bank_account_id && !(await bankAccountRepository.findById(input.bank_account_id))) {
-      throw new ServiceError(['bank_account_id does not refer to a valid account']);
+    if (input.bank_account_id) {
+      const payingAccount = await bankAccountRepository.findById(input.bank_account_id);
+      if (!payingAccount) throw new ServiceError(['bank_account_id does not refer to a valid account']);
+      if (payingAccount.balance_cents < 0) throw new ServiceError(['Cannot charge an expense to a negative-balance account']);
     }
 
     const db = await getDb();
     let updated: ExpenseRow | null = null;
     await db.withTransactionAsync(async () => {
-      // Reverse the old effect on whichever account it used to debit.
-      if (existing.bank_account_id && existing.bank_account_id !== input.bank_account_id) {
-        await bankAccountRepository.adjustBalance(existing.bank_account_id, existing.amount_cents);
-      }
-      // Apply the (possibly new or re-amounted) expense's effect.
+      // Undo the old expense's effect first (refund + give back any set-aside
+      // it used), then apply the new one - so the available/set-aside checks
+      // see the state as if this expense hadn't happened yet.
+      await reverseFunding(existing);
       const newAmountCents = toCents(input.amount);
-      if (input.bank_account_id) {
-        if (existing.bank_account_id === input.bank_account_id) {
-          await bankAccountRepository.adjustBalance(input.bank_account_id, existing.amount_cents - newAmountCents);
-        } else {
-          await bankAccountRepository.adjustBalance(input.bank_account_id, -newAmountCents);
-        }
-      }
+      const usedCents = input.bank_account_id ? await fundFromAccount(input.bank_account_id, newAmountCents, input.reservation_id ?? null) : null;
 
       updated = await expenseRepository.update(id, {
         amountCents: newAmountCents,
@@ -192,6 +250,9 @@ export const expenseService = {
         creditCardId: input.credit_card_id,
         bankAccountId: input.bank_account_id,
         receiptImage: input.receipt_image,
+        source: input.source,
+        reservationId: usedCents !== null ? input.reservation_id ?? null : null,
+        reservationUsedCents: usedCents,
       });
       await expenseRepository.replaceShares(id, shares);
     });
@@ -204,9 +265,7 @@ export const expenseService = {
 
     const db = await getDb();
     await db.withTransactionAsync(async () => {
-      if (existing.bank_account_id) {
-        await bankAccountRepository.adjustBalance(existing.bank_account_id, existing.amount_cents);
-      }
+      await reverseFunding(existing);
       // expense_shares cascade-delete via FK (ON DELETE CASCADE + PRAGMA foreign_keys = ON).
       await expenseRepository.delete(id);
     });

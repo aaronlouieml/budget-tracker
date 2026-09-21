@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Keyboard, ScrollView, StyleSheet, View } from 'react-native';
 import {
   ActivityIndicator,
   Button,
@@ -213,7 +213,12 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
   return (
     <>
       <DismissKeyboardView>
-      <ScrollView style={{ backgroundColor: theme.colors.background }} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={{ backgroundColor: theme.colors.background }}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={Keyboard.dismiss}
+      >
         <View style={[styles.summary, { backgroundColor: theme.colors.primary }]}>
           <View style={styles.summaryTopRow}>
             <View>
@@ -270,6 +275,7 @@ export default function CreditCardDetailScreen({ route, navigation }: Props) {
               mode="outlined"
               onPress={() => navigation.getParent<BottomTabNavigationProp<RootTabParamList>>()?.navigate('Money Owed')}
               style={styles.secondaryButton}
+              contentStyle={styles.payButtonContent}
               icon="hand-coin-outline"
             >
               Money Owed
@@ -536,6 +542,7 @@ const styles = StyleSheet.create({
     height: 48,
   },
   secondaryButton: {
+    flex: 1,
     borderRadius: radii.button,
   },
   section: {

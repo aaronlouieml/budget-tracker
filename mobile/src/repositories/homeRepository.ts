@@ -7,7 +7,7 @@ export const homeRepository = {
     const db = await getDb();
     const [incoming, reimbursements, planImports] = await Promise.all([
       db.getFirstAsync<{ total: number }>(
-        `SELECT COALESCE(SUM(amount_cents), 0) AS total FROM incoming_money WHERE substr(created_at, 1, 10) BETWEEN ? AND ?`,
+        `SELECT COALESCE(SUM(amount_cents), 0) AS total FROM incoming_money WHERE status = 'received' AND substr(received_at, 1, 10) BETWEEN ? AND ?`,
         startDate,
         endDate
       ),

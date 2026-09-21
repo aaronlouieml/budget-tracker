@@ -6,6 +6,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { bankAccountService, type BankAccount } from '../services/bankAccountService';
 import { creditCardService, type CreditCard } from '../services/creditCardService';
+import { personService } from '../services/personService';
 import { ServiceError } from '../services/errors';
 import { ACCOUNT_TYPES, ACCOUNT_TYPE_PASTEL } from '../constants/accountOptions';
 import { STATUS_LABELS, STATUS_TONE } from '../constants/cardStatus';
@@ -14,6 +15,7 @@ import StatusPill from '../components/StatusPill';
 import AmountText from '../components/AmountText';
 import EmptyState from '../components/EmptyState';
 import { spacing, screenPadding } from '../theme/spacing';
+import { tabularNumberStyle } from '../theme/typography';
 import { radii } from '../theme/radii';
 import type { AccountsStackParamList } from '../navigation/AccountsNavigator';
 
@@ -27,6 +29,7 @@ export default function AccountsScreen({ navigation }: Props) {
   const theme = useTheme();
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [cards, setCards] = useState<CreditCard[]>([]);
+  const [othersOweTotal, setOthersOweTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isFabOpen, setFabOpen] = useState(false);
@@ -34,9 +37,16 @@ export default function AccountsScreen({ navigation }: Props) {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [accountData, cardData] = await Promise.all([bankAccountService.listAccounts(), creditCardService.listCards()]);
+      const [accountData, cardData, people] = await Promise.all([
+        bankAccountService.listAccounts(),
+        creditCardService.listCards(),
+        personService.listPeople(),
+      ]);
       setAccounts(accountData);
       setCards(cardData);
+      // Same source Home uses (each person's own outstanding balance) - not
+      // the per-account/per-card "others owe" slices, which would double count.
+      setOthersOweTotal(people.reduce((sum, p) => sum + Math.max(0, Number(p.owesMe)), 0));
     } catch (err) {
       setError(err instanceof ServiceError ? err.message : 'Unable to load accounts.');
     } finally {
@@ -75,7 +85,10 @@ export default function AccountsScreen({ navigation }: Props) {
     ...accounts.map((data) => ({ kind: 'account' as const, data })),
     ...cards.map((data) => ({ kind: 'card' as const, data })),
   ];
+  const totalBalance = accounts.reduce((sum, a) => sum + Number(a.balance), 0);
   const totalAvailable = accounts.reduce((sum, a) => sum + Number(a.available), 0);
+  const totalSetAside = accounts.reduce((sum, a) => sum + Number(a.reserved), 0);
+  const totalOutstanding = cards.reduce((sum, c) => sum + Number(c.unpaid), 0);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -87,11 +100,22 @@ export default function AccountsScreen({ navigation }: Props) {
         onRefresh={load}
         ListHeaderComponent={
           items.length > 0 ? (
-            <View style={styles.totalBlock}>
-              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                Total available
-              </Text>
-              <AmountText value={formatCurrency(totalAvailable)} variant="displaySmall" />
+            <View>
+              <View style={[styles.summaryCard, { backgroundColor: theme.colors.primary }]}>
+                <Text variant="labelLarge" style={[styles.heroMuted, { color: theme.colors.onPrimary }]}>
+                  Total balance
+                </Text>
+                <Text variant="displaySmall" style={[tabularNumberStyle, { color: theme.colors.onPrimary }]}>
+                  {formatCurrency(totalBalance)}
+                </Text>
+                <View style={[styles.summaryDivider, { backgroundColor: theme.colors.onPrimary }]} />
+                <View style={styles.summaryGrid}>
+                  <SummaryStat label="Available" value={formatCurrency(totalAvailable)} color={theme.colors.tertiary} />
+                  <SummaryStat label="Set aside" value={formatCurrency(totalSetAside)} color={theme.colors.onPrimary} />
+                  <SummaryStat label="Credit card outstanding" value={formatCurrency(totalOutstanding)} color={theme.colors.onPrimary} />
+                  <SummaryStat label="Others owe you" value={formatCurrency(othersOweTotal)} color={theme.colors.onPrimary} />
+                </View>
+              </View>
               <Text variant="labelLarge" style={[styles.listLabel, { color: theme.colors.onSurfaceVariant }]}>
                 Your accounts
               </Text>
@@ -135,6 +159,14 @@ export default function AccountsScreen({ navigation }: Props) {
                     </Text>
                     <AmountText value={formatCurrency(item.data.reserved)} variant="titleSmall" tone="muted" />
                   </View>
+                  {Number(item.data.othersOwe) > 0 && (
+                    <View style={styles.detailCol}>
+                      <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                        Others owe you
+                      </Text>
+                      <AmountText value={formatCurrency(item.data.othersOwe)} variant="titleSmall" tone="positive" />
+                    </View>
+                  )}
                 </View>
               </View>
             </TouchableRipple>
@@ -207,6 +239,20 @@ export default function AccountsScreen({ navigation }: Props) {
   );
 }
 
+function SummaryStat({ label, value, color }: { label: string; value: string; color: string }) {
+  const theme = useTheme();
+  return (
+    <View style={styles.summaryStat}>
+      <Text variant="bodySmall" style={[styles.heroMuted, { color: theme.colors.onPrimary }]}>
+        {label}
+      </Text>
+      <Text variant="titleMedium" style={[tabularNumberStyle, { color }]}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -221,8 +267,27 @@ const styles = StyleSheet.create({
     padding: screenPadding,
     gap: spacing.md,
   },
-  totalBlock: {
-    marginBottom: spacing.lg,
+  summaryCard: {
+    borderRadius: radii.cardLarge,
+    padding: spacing.xl,
+  },
+  // Muted secondary text on the hero card (matches Home's hero card).
+  heroMuted: {
+    opacity: 0.62,
+  },
+  summaryDivider: {
+    height: StyleSheet.hairlineWidth,
+    opacity: 0.14,
+    marginVertical: spacing.base,
+  },
+  summaryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    rowGap: spacing.base,
+  },
+  summaryStat: {
+    width: '50%',
+    gap: 2,
   },
   listLabel: {
     marginTop: spacing.lg,

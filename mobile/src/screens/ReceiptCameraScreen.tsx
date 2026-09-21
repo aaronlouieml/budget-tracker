@@ -2,22 +2,27 @@ import { useRef, useState } from 'react';
 import { Image, Linking, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Button, IconButton, Text } from 'react-native-paper';
 import { CameraView, useCameraPermissions, type CameraCapturedPicture } from 'expo-camera';
+import TextRecognition from '@react-native-ml-kit/text-recognition';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { ExpensesStackParamList } from '../navigation/ExpensesNavigator';
+import { parseReceipt, type OcrBlock } from '../utils/receiptParser';
 
 type Props = NativeStackScreenProps<ExpensesStackParamList, 'ReceiptCamera'>;
 
-// Receipt OCR is not implemented in this local-only version (it required a
-// backend to call an OCR provider). The camera still attaches the photo to
-// the expense as before - the user just fills in the details manually,
-// reusing the existing "couldn't read this receipt" review banner.
+// Runs on-device text recognition (Apple Vision on iOS, Google ML Kit on
+// Android via @react-native-ml-kit/text-recognition - fully offline, no
+// backend) on the captured photo, then hands the parsed guess to the expense
+// form for the user to review and correct before saving. A recognition
+// failure of any kind degrades to the same "couldn't read this receipt"
+// manual-entry state the app has always had - never crashes, never blocks.
 export default function ReceiptCameraScreen({ navigation }: Props) {
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
 
   const [photo, setPhoto] = useState<CameraCapturedPicture | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   async function handleCapture() {
     if (!cameraRef.current) return;
@@ -34,17 +39,46 @@ export default function ReceiptCameraScreen({ navigation }: Props) {
     setPhoto(null);
   }
 
-  function handleUsePhoto() {
-    if (!photo?.base64) return;
-    navigation.replace('ExpenseForm', {
-      scanned: {
-        amount: null,
-        date: null,
-        merchant: null,
-        imageBase64: photo.base64,
-        ocrFailed: true,
-      },
-    });
+  async function handleUsePhoto() {
+    if (!photo?.uri || !photo?.base64) return;
+    const imageBase64 = photo.base64;
+    setIsProcessing(true);
+    try {
+      const result = await TextRecognition.recognize(photo.uri);
+      const blocks: OcrBlock[] = result.blocks
+        .filter((b) => b.frame)
+        .map((b) => ({
+          text: b.text,
+          frame: { x: b.frame!.left, y: b.frame!.top, width: b.frame!.width, height: b.frame!.height },
+        }));
+      const parsed = parseReceipt({ text: result.text, blocks });
+      navigation.replace('ExpenseForm', {
+        scanned: {
+          amount: parsed.amount,
+          date: parsed.date,
+          merchant: parsed.merchant,
+          imageBase64,
+          ocrFailed: false,
+          confidence: parsed.confidence,
+        },
+      });
+    } catch {
+      // Recognition itself failed (permissions, corrupt image, ML Kit
+      // runtime error) - fall back to the same manual-entry state this
+      // screen has always used, rather than blocking the user.
+      navigation.replace('ExpenseForm', {
+        scanned: {
+          amount: null,
+          date: null,
+          merchant: null,
+          imageBase64,
+          ocrFailed: true,
+          confidence: 'none',
+        },
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   }
 
   if (!permission) {
@@ -82,10 +116,10 @@ export default function ReceiptCameraScreen({ navigation }: Props) {
       <View style={styles.container}>
         <Image source={{ uri: photo.uri }} style={styles.preview} resizeMode="contain" />
         <View style={styles.reviewActions}>
-          <Button mode="outlined" onPress={handleRetake} style={styles.reviewButton}>
+          <Button mode="outlined" onPress={handleRetake} style={styles.reviewButton} disabled={isProcessing}>
             Retake
           </Button>
-          <Button mode="contained" onPress={handleUsePhoto} style={styles.reviewButton}>
+          <Button mode="contained" onPress={handleUsePhoto} style={styles.reviewButton} loading={isProcessing} disabled={isProcessing}>
             Use Photo
           </Button>
         </View>

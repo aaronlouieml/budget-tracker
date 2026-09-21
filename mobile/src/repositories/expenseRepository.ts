@@ -11,6 +11,9 @@ export interface ExpenseRow {
   credit_card_id: string | null;
   bank_account_id: string | null;
   receipt_image: string | null;
+  source: string;
+  reservation_id: string | null;
+  reservation_used_cents: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -23,7 +26,7 @@ export interface ExpenseShareRow {
   created_at: string;
 }
 
-const LIST_COLUMNS = 'id, amount_cents, category, date, merchant, payment_method, credit_card_id, bank_account_id, created_at, updated_at';
+const LIST_COLUMNS = 'id, amount_cents, category, date, merchant, payment_method, credit_card_id, bank_account_id, source, created_at, updated_at';
 
 export const expenseRepository = {
   async listAll(): Promise<ExpenseRow[]> {
@@ -50,13 +53,16 @@ export const expenseRepository = {
     creditCardId: string | null;
     bankAccountId: string | null;
     receiptImage: string | null;
+    source: string;
+    reservationId: string | null;
+    reservationUsedCents: number | null;
   }): Promise<ExpenseRow> {
     const db = await getDb();
     const id = newId();
     const now = nowISO();
     await db.runAsync(
-      `INSERT INTO expenses (id, amount_cents, category, date, merchant, payment_method, credit_card_id, bank_account_id, receipt_image, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO expenses (id, amount_cents, category, date, merchant, payment_method, credit_card_id, bank_account_id, receipt_image, source, reservation_id, reservation_used_cents, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       id,
       input.amountCents,
       input.category,
@@ -66,6 +72,9 @@ export const expenseRepository = {
       input.creditCardId,
       input.bankAccountId,
       input.receiptImage,
+      input.source,
+      input.reservationId,
+      input.reservationUsedCents,
       now,
       now
     );
@@ -83,12 +92,16 @@ export const expenseRepository = {
       creditCardId: string | null;
       bankAccountId: string | null;
       receiptImage: string | null;
+      source: string;
+      reservationId: string | null;
+      reservationUsedCents: number | null;
     }
   ): Promise<ExpenseRow | null> {
     const db = await getDb();
     await db.runAsync(
       `UPDATE expenses SET amount_cents = ?, category = ?, date = ?, merchant = ?, payment_method = ?,
-        credit_card_id = ?, bank_account_id = ?, receipt_image = COALESCE(?, receipt_image), updated_at = ?
+        credit_card_id = ?, bank_account_id = ?, receipt_image = COALESCE(?, receipt_image), source = ?,
+        reservation_id = ?, reservation_used_cents = ?, updated_at = ?
        WHERE id = ?`,
       input.amountCents,
       input.category,
@@ -98,6 +111,9 @@ export const expenseRepository = {
       input.creditCardId,
       input.bankAccountId,
       input.receiptImage,
+      input.source,
+      input.reservationId,
+      input.reservationUsedCents,
       nowISO(),
       id
     );

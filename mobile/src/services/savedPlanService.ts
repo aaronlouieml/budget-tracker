@@ -81,6 +81,19 @@ export const savedPlanService = {
     return toSavedPlan(row);
   },
 
+  async update(id: string, input: SavedPlanInput): Promise<SavedPlan> {
+    validate(input);
+    const row = await savedPlanRepository.update(id, {
+      name: input.name.trim(),
+      expectedDate: input.expectedDate,
+      plannedAmountCents: input.plannedAmount != null ? toCents(input.plannedAmount) : null,
+      note: input.note?.trim() || null,
+      allocations: input.allocations.map((a) => ({ name: a.name.trim(), amountCents: toCents(a.amount) })),
+    });
+    if (!row) throw new ServiceError(['Plan not found'], 404);
+    return toSavedPlan(row);
+  },
+
   async deletePlan(id: string): Promise<void> {
     const deleted = await savedPlanRepository.delete(id);
     if (!deleted) throw new ServiceError(['Plan not found'], 404);
@@ -115,6 +128,8 @@ export const savedPlanService = {
           amountCents: allocation.amount_cents,
           purpose: 'other',
           creditCardId: null,
+          category: null,
+          plannedDate: null,
         });
       }
       await savedPlanRepository.markUsed(planId);

@@ -4,6 +4,7 @@ import { settingsRepository } from '../repositories/settingsRepository';
 import { bankAccountService } from './bankAccountService';
 import { creditCardService } from './creditCardService';
 import { recurringPaymentService } from './recurringPaymentService';
+import { personService } from './personService';
 import { toExpense, type Expense } from './expenseService';
 import { fromCents } from '../utils/money';
 
@@ -12,10 +13,25 @@ export type RecentExpensesPeriod = 'today' | 'week' | 'month';
 // Order here is display order on Home (recent activity first, then
 // accounts, then what's coming up) - purely presentational, no effect on
 // what each section contains.
-export const HOME_SECTION_KEYS = ['recentExpenses', 'accountOverview', 'upcomingDue', 'reservedMoney', 'monthlySummary', 'spendingByCategory'] as const;
+export const HOME_SECTION_KEYS = [
+  'recentExpenses',
+  'accountOverview',
+  'upcomingDue',
+  'reservedMoney',
+  'othersOweMe',
+  'monthlySummary',
+  'spendingByCategory',
+] as const;
 export type HomeSectionKey = (typeof HOME_SECTION_KEYS)[number];
 
-export const DEFAULT_VISIBLE_SECTIONS: HomeSectionKey[] = ['recentExpenses', 'accountOverview', 'upcomingDue', 'reservedMoney', 'monthlySummary'];
+export const DEFAULT_VISIBLE_SECTIONS: HomeSectionKey[] = [
+  'recentExpenses',
+  'accountOverview',
+  'upcomingDue',
+  'reservedMoney',
+  'othersOweMe',
+  'monthlySummary',
+];
 
 const SECTIONS_SETTING_KEY = 'home.visibleSections';
 const PERIOD_SETTING_KEY = 'home.recentExpensesPeriod';
@@ -40,6 +56,17 @@ export interface ReservationSummaryItem {
   amount: string;
 }
 
+export interface OwedByPersonItem {
+  id: string;
+  name: string;
+  amount: string;
+}
+
+export interface OthersOweMeSummary {
+  total: string;
+  people: OwedByPersonItem[];
+}
+
 export interface UpcomingItem {
   id: string;
   label: string;
@@ -54,6 +81,7 @@ export interface HomeData {
   categoryTotals: { category: string; total: string }[];
   recentExpenses: Expense[];
   reservations: ReservationSummaryItem[];
+  othersOweMe: OthersOweMeSummary;
   upcoming: UpcomingItem[];
   visibleSections: HomeSectionKey[];
   recentExpensesPeriod: RecentExpensesPeriod;
@@ -109,14 +137,20 @@ export const homeService = {
 
   async getHomeData(): Promise<HomeData> {
     const today = new Date();
-    const [accounts, cards, recurring, visibleSections, recentExpensesPeriod, reservations] = await Promise.all([
+    const [accounts, cards, recurring, visibleSections, recentExpensesPeriod, reservations, people] = await Promise.all([
       bankAccountService.listAccounts(),
       creditCardService.listCards(),
       recurringPaymentService.listUpcoming(5),
       homeService.getVisibleSections(),
       homeService.getRecentExpensesPeriod(),
       homeRepository.allActiveReservations(),
+      personService.listPeople(),
     ]);
+
+    // Reuse the same per-person outstanding calc Money Owed already uses -
+    // don't reimplement it here, so the total always matches that screen.
+    const owingPeople = people.filter((p) => Number(p.owesMe) > 0).sort((a, b) => Number(b.owesMe) - Number(a.owesMe));
+    const othersOweMeTotalCents = owingPeople.reduce((sum, p) => sum + Math.round(Number(p.owesMe) * 100), 0);
 
     const totalAvailableCents = accounts.reduce((sum, a) => sum + Number(a.available) * 100, 0);
     const totalReservedCents = accounts.reduce((sum, a) => sum + Number(a.reserved) * 100, 0);
@@ -157,6 +191,10 @@ export const homeService = {
       categoryTotals: categoryTotals.map((c) => ({ category: c.category, total: fromCents(c.total) })),
       recentExpenses: recentRows.map(toExpense),
       reservations: reservations.map((r) => ({ id: r.id, accountName: r.account_name, name: r.name, amount: fromCents(r.amount_cents) })),
+      othersOweMe: {
+        total: fromCents(othersOweMeTotalCents),
+        people: owingPeople.slice(0, 5).map((p) => ({ id: p.id, name: p.name, amount: p.owesMe })),
+      },
       upcoming,
       visibleSections,
       recentExpensesPeriod,

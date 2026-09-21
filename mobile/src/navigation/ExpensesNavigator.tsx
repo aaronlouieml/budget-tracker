@@ -12,6 +12,10 @@ export interface ScannedReceipt {
   merchant: string | null;
   imageBase64: string;
   ocrFailed: boolean;
+  // 'high' = a Total-like keyword was matched directly; 'low' = only a best
+  // guess (e.g. largest number on the receipt); 'none' = nothing usable
+  // found. Drives which review banner ExpenseFormScreen shows.
+  confidence: 'high' | 'low' | 'none';
   ocrError?: string;
 }
 

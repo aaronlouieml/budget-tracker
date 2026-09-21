@@ -11,6 +11,7 @@ import { formatCurrency, formatDate } from '../utils/format';
 import { confirmDestructive } from '../utils/confirm';
 import CategoryIcon from '../components/CategoryIcon';
 import AmountText from '../components/AmountText';
+import StatusPill from '../components/StatusPill';
 import { spacing, screenPadding } from '../theme/spacing';
 import { tabularNumberStyle } from '../theme/typography';
 import type { ExpensesStackParamList } from '../navigation/ExpensesNavigator';
@@ -110,6 +111,7 @@ export default function ExpenseDetailScreen({ route, navigation }: Props) {
           {detail.category} · {formatDate(detail.date)}
           {detail.payment_method ? ' · ' + (PAYMENT_METHOD_LABELS[detail.payment_method] ?? detail.payment_method) : ''}
         </Text>
+        {detail.source === 'scan' && <StatusPill label="SCANNED" tone="blue" />}
       </View>
 
       {hasSplit && (

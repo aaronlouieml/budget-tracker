@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
-import { ActivityIndicator, Button, Dialog, Divider, IconButton, Menu, Portal, Text, useTheme } from 'react-native-paper';
+import { Keyboard, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Button, Chip, Dialog, Divider, IconButton, Menu, Portal, Snackbar, Text, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -12,16 +12,20 @@ import {
   type BankAccountDetail,
   type Reservation,
   type ReservationPurpose,
+  type IncomingSourceType,
 } from '../services/bankAccountService';
 import { creditCardService, type CreditCard } from '../services/creditCardService';
 import { transferService } from '../services/transferService';
+import { personService, type Person } from '../services/personService';
 import { ServiceError } from '../services/errors';
-import { ACCOUNT_TYPES, RESERVATION_PURPOSES } from '../constants/accountOptions';
-import { formatCurrency, formatDate, todayISODate } from '../utils/format';
-import { confirmDestructive } from '../utils/confirm';
+import { ACCOUNT_TYPES, RESERVATION_PURPOSES, INCOMING_SOURCE_TYPES } from '../constants/accountOptions';
+import { RESERVATION_CATEGORIES } from '../constants/reservationCategories';
+import { formatCurrency, formatDate, formatShortDate, todayISODate } from '../utils/format';
+import { confirmDestructive, confirmAction } from '../utils/confirm';
 import DismissKeyboardView from '../components/DismissKeyboardView';
 import DoneAccessory, { DONE_ACCESSORY_ID } from '../components/DoneAccessory';
 import AppTextInput from '../components/AppTextInput';
+import DateField from '../components/DateField';
 import SectionHeader from '../components/SectionHeader';
 import AmountText from '../components/AmountText';
 import EmptyState from '../components/EmptyState';
@@ -35,6 +39,7 @@ type Props = NativeStackScreenProps<AccountsStackParamList, 'AccountDetail'>;
 
 const TYPE_LABELS = Object.fromEntries(ACCOUNT_TYPES.map((t) => [t.value, t.label]));
 const PURPOSE_LABELS = Object.fromEntries(RESERVATION_PURPOSES.map((p) => [p.value, p.label]));
+const INCOMING_SOURCE_LABELS = Object.fromEntries(INCOMING_SOURCE_TYPES.map((s) => [s.value, s.label])) as Record<IncomingSourceType, string>;
 
 const ACTIVITY_ICONS: Record<ActivityItem['type'], keyof typeof MaterialCommunityIcons.glyphMap> = {
   expense: 'cart-outline',
@@ -43,6 +48,7 @@ const ACTIVITY_ICONS: Record<ActivityItem['type'], keyof typeof MaterialCommunit
   incoming: 'cash-plus',
   reimbursement: 'account-cash-outline',
   plan_import: 'calendar-check-outline',
+  set_aside_used: 'lock-open-variant-outline',
 };
 
 export default function BankAccountDetailScreen({ route, navigation }: Props) {
@@ -61,14 +67,29 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
   const [reservePurpose, setReservePurpose] = useState<ReservationPurpose>('credit_card_payment');
   const [reserveCardId, setReserveCardId] = useState<string | null>(null);
   const [isCardMenuVisible, setCardMenuVisible] = useState(false);
+  const [reserveCategory, setReserveCategory] = useState('');
+  const [hasPlannedDate, setHasPlannedDate] = useState(false);
+  const [reservePlannedDate, setReservePlannedDate] = useState(todayISODate());
   const [reserveError, setReserveError] = useState<string | null>(null);
   const [isSubmittingReserve, setIsSubmittingReserve] = useState(false);
 
-  const [isIncomingDialogVisible, setIncomingDialogVisible] = useState(false);
-  const [incomingAmount, setIncomingAmount] = useState('');
-  const [incomingDescription, setIncomingDescription] = useState('');
-  const [incomingError, setIncomingError] = useState<string | null>(null);
-  const [isSubmittingIncoming, setIsSubmittingIncoming] = useState(false);
+
+  const [isDepositDialogVisible, setDepositDialogVisible] = useState(false);
+  const [depositAmount, setDepositAmount] = useState('');
+  const [depositDescription, setDepositDescription] = useState('');
+  const [depositSourceType, setDepositSourceType] = useState<IncomingSourceType>('manual');
+  const [depositError, setDepositError] = useState<string | null>(null);
+  const [isSubmittingDeposit, setIsSubmittingDeposit] = useState(false);
+
+  const [people, setPeople] = useState<Person[]>([]);
+  const [payingPerson, setPayingPerson] = useState<Person | null>(null);
+  const [owedPayAmount, setOwedPayAmount] = useState('');
+  const [owedPayAccountId, setOwedPayAccountId] = useState<string | null>(null);
+  const [isOwedAccountMenuVisible, setOwedAccountMenuVisible] = useState(false);
+  const [owedPayError, setOwedPayError] = useState<string | null>(null);
+  const [isSubmittingOwedPay, setIsSubmittingOwedPay] = useState(false);
+
+  const [flash, setFlash] = useState<string | null>(null);
 
   const [activity, setActivity] = useState<ActivityItem[]>([]);
 
@@ -109,6 +130,12 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
         .catch(() => {
           // Non-critical: the transfer destination picker just falls back to "no accounts" state.
         });
+      personService
+        .listPeople()
+        .then(setPeople)
+        .catch(() => {
+          // Non-critical: the Coming In section just won't show who owes money.
+        });
     }, [loadDetail, accountId])
   );
 
@@ -144,6 +171,9 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
     setReserveAmount('');
     setReservePurpose('credit_card_payment');
     setReserveCardId(null);
+    setReserveCategory('');
+    setHasPlannedDate(false);
+    setReservePlannedDate(todayISODate());
     setReserveError(null);
     setReserveDialogVisible(true);
   }
@@ -154,6 +184,9 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
     setReserveAmount(reservation.amount);
     setReservePurpose(reservation.purpose);
     setReserveCardId(reservation.credit_card_id);
+    setReserveCategory(reservation.category ?? '');
+    setHasPlannedDate(reservation.planned_date !== null);
+    setReservePlannedDate(reservation.planned_date ?? todayISODate());
     setReserveError(null);
     setReserveDialogVisible(true);
   }
@@ -178,6 +211,8 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
         amount: amountValue,
         purpose: reservePurpose,
         creditCardId: reservePurpose === 'credit_card_payment' ? reserveCardId : null,
+        category: reserveCategory.trim() || null,
+        plannedDate: hasPlannedDate ? reservePlannedDate : null,
       };
       if (editingReservationId !== null) {
         await bankAccountService.updateReservation(accountId, editingReservationId, input);
@@ -204,31 +239,16 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
     });
   }
 
-  function openIncomingDialog() {
-    setIncomingAmount('');
-    setIncomingDescription('');
-    setIncomingError(null);
-    setIncomingDialogVisible(true);
-  }
-
-  async function handleCreateIncoming() {
-    const amountValue = Number(incomingAmount);
-    if (!incomingAmount || Number.isNaN(amountValue) || amountValue <= 0) {
-      setIncomingError('Enter a valid amount');
-      return;
-    }
-
-    setIsSubmittingIncoming(true);
-    setIncomingError(null);
-    try {
-      await bankAccountService.createIncoming(accountId, { amount: amountValue, description: incomingDescription.trim() || null });
-      setIncomingDialogVisible(false);
-      await loadDetail();
-    } catch (err) {
-      setIncomingError(err instanceof ServiceError ? err.message : 'Unable to record incoming money.');
-    } finally {
-      setIsSubmittingIncoming(false);
-    }
+  function handleReleaseReservation(reservationId: string) {
+    confirmAction('Mark as used?', 'This frees the amount back to your available money. Your balance stays the same.', 'Mark as Used', async () => {
+      try {
+        await bankAccountService.releaseReservation(accountId, reservationId);
+        setFlash('Moved back to available');
+        await loadDetail();
+      } catch (err) {
+        setError(err instanceof ServiceError ? err.message : 'Unable to release this reservation.');
+      }
+    });
   }
 
   function handleDeleteIncoming(incomingId: string) {
@@ -240,6 +260,83 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
         setError(err instanceof ServiceError ? err.message : 'Unable to remove incoming money.');
       }
     });
+  }
+
+  async function handleConfirmIncoming(incomingId: string) {
+    try {
+      await bankAccountService.confirmIncoming(accountId, incomingId);
+      setFlash('Added to your balance');
+      await loadDetail();
+    } catch (err) {
+      setError(err instanceof ServiceError ? err.message : 'Unable to add this to your account.');
+    }
+  }
+
+  function openDepositDialog() {
+    setDepositAmount('');
+    setDepositDescription('');
+    setDepositSourceType('manual');
+    setDepositError(null);
+    setDepositDialogVisible(true);
+  }
+
+  async function handleCreateDeposit() {
+    const amountValue = Number(depositAmount);
+    if (!depositAmount || Number.isNaN(amountValue) || amountValue <= 0) {
+      setDepositError('Enter a valid amount');
+      return;
+    }
+
+    setIsSubmittingDeposit(true);
+    setDepositError(null);
+    try {
+      await bankAccountService.createDeposit(accountId, {
+        amount: amountValue,
+        description: depositDescription.trim() || null,
+        sourceType: depositSourceType,
+      });
+      setDepositDialogVisible(false);
+      setFlash('Money added');
+      await loadDetail();
+    } catch (err) {
+      setDepositError(err instanceof ServiceError ? err.message : 'Unable to add money.');
+    } finally {
+      setIsSubmittingDeposit(false);
+    }
+  }
+
+  function openOwedPayDialog(person: Person) {
+    setPayingPerson(person);
+    setOwedPayAmount(person.owesMe);
+    setOwedPayAccountId(accountId);
+    setOwedPayError(null);
+  }
+
+  async function handleRecordOwedPayment() {
+    if (!payingPerson) return;
+    const amountValue = Number(owedPayAmount);
+    if (!owedPayAmount || Number.isNaN(amountValue) || amountValue <= 0) {
+      setOwedPayError('Enter a valid amount');
+      return;
+    }
+    if (!owedPayAccountId) {
+      setOwedPayError('Select where you received the money');
+      return;
+    }
+
+    setIsSubmittingOwedPay(true);
+    setOwedPayError(null);
+    try {
+      await personService.recordPayment(payingPerson.id, { amount: amountValue, bankAccountId: owedPayAccountId, date: todayISODate() });
+      setPayingPerson(null);
+      setFlash(`${payingPerson.name}'s payment recorded`);
+      await loadDetail();
+      personService.listPeople().then(setPeople).catch(() => {});
+    } catch (err) {
+      setOwedPayError(err instanceof ServiceError ? err.message : 'Unable to record payment.');
+    } finally {
+      setIsSubmittingOwedPay(false);
+    }
   }
 
   function openTransferDialog() {
@@ -302,14 +399,40 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
   }
 
   const { account, reservations, incoming, incomingTotal, potentialAvailable } = detail;
-  const activeReservations = reservations.filter((r) => r.status === 'reserved');
-  const fulfilledReservations = reservations.filter((r) => r.status === 'fulfilled');
+  const isNegative = Number(account.balance) < 0;
+  const activeReservations = [...reservations.filter((r) => r.status === 'reserved')].sort((a, b) => {
+    if (a.planned_date && b.planned_date) return a.planned_date.localeCompare(b.planned_date);
+    if (a.planned_date) return -1;
+    if (b.planned_date) return 1;
+    return 0;
+  });
   const selectedCard = cards.find((c) => c.id === reserveCardId);
+  // Group active (sorted-by-date) reservations under date headers, so it's
+  // easy to see what's coming up and when - undated ones fall in their own
+  // trailing group since they sort last.
+  const reservationGroups: { label: string; items: Reservation[] }[] = [];
+  for (const item of activeReservations) {
+    const label = item.planned_date ? formatShortDate(item.planned_date) : 'No date';
+    const lastGroup = reservationGroups[reservationGroups.length - 1];
+    if (lastGroup && lastGroup.label === label) {
+      lastGroup.items.push(item);
+    } else {
+      reservationGroups.push({ label, items: [item] });
+    }
+  }
+  const pendingIncoming = incoming.filter((i) => i.status === 'pending');
+  const owingPeople = people.filter((p) => Number(p.owesMe) > 0);
+  const owedPaySelectedAccount = accounts.concat(account).find((a) => a.id === owedPayAccountId);
 
   return (
     <>
       <DismissKeyboardView>
-      <ScrollView style={{ backgroundColor: theme.colors.background }} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={{ backgroundColor: theme.colors.background }}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={Keyboard.dismiss}
+      >
         <View style={[styles.summary, { backgroundColor: theme.colors.primary }]}>
           <StatusPill label={(TYPE_LABELS[account.type] ?? account.type).toUpperCase()} tone="neutral" />
           <Text variant="displaySmall" style={[tabularNumberStyle, styles.balanceAmount, { color: theme.colors.onPrimary }]}>
@@ -339,16 +462,37 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
               </Text>
             </View>
           </View>
+
+          {Number(account.othersOwe) > 0 && (
+            <View style={styles.responsibilityRow}>
+              <MaterialCommunityIcons name="hand-coin-outline" size={14} color={theme.colors.onPrimary} style={styles.heroMuted} />
+              <Text variant="bodySmall" style={[styles.heroMuted, { color: theme.colors.onPrimary }]}>
+                Others owe you
+              </Text>
+              <Text variant="titleSmall" style={[tabularNumberStyle, styles.responsibilityAmount, { color: theme.colors.onPrimary }]}>
+                {formatCurrency(account.othersOwe)}
+              </Text>
+            </View>
+          )}
         </View>
 
+        {isNegative && (
+          <View style={[styles.negativeNotice, { backgroundColor: theme.colors.errorContainer, borderRadius: radii.card }]}>
+            <MaterialCommunityIcons name="alert-circle-outline" size={18} color={theme.colors.onErrorContainer} />
+            <Text variant="bodySmall" style={[styles.negativeNoticeText, { color: theme.colors.onErrorContainer }]}>
+              This account is negative. Set Aside, transfers out, and expenses from this account are disabled until it's positive again.
+            </Text>
+          </View>
+        )}
+
         <View style={styles.buttonRow}>
-          <Button mode="contained" onPress={openReserveDialog} icon="lock-outline" style={styles.actionButton}>
+          <Button mode="contained" onPress={openReserveDialog} icon="lock-outline" style={styles.actionButton} disabled={isNegative}>
             Set Aside
           </Button>
-          <Button mode="outlined" onPress={openIncomingDialog} icon="cash-plus" style={styles.actionButton}>
-            Coming In
+          <Button mode="outlined" onPress={openDepositDialog} icon="wallet-plus-outline" style={styles.actionButton}>
+            Add Money
           </Button>
-          <Button mode="outlined" onPress={openTransferDialog} icon="bank-transfer" style={styles.actionButton} disabled={accounts.length === 0}>
+          <Button mode="outlined" onPress={openTransferDialog} icon="bank-transfer" style={styles.actionButton} disabled={accounts.length === 0 || isNegative}>
             Transfer
           </Button>
         </View>
@@ -372,58 +516,89 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
 
         <View style={styles.section}>
           <SectionHeader title="Set Aside" subtitle="Still your money - just saved for later." />
-          {activeReservations.length === 0 && fulfilledReservations.length === 0 ? (
+          {activeReservations.length === 0 ? (
             <EmptyState icon="lock-outline" title="Nothing set aside" description="Save a slice for rent, bills, or a credit card payment." compact />
           ) : (
-            [...activeReservations, ...fulfilledReservations].map((item, index, arr) => (
-              <View key={item.id}>
-                <View style={styles.listRow}>
-                  <View style={styles.listRowText}>
-                    <Text variant="bodyLarge" numberOfLines={1} style={{ color: theme.colors.onSurface }}>
-                      {item.name}
-                    </Text>
-                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }} numberOfLines={1}>
-                      {PURPOSE_LABELS[item.purpose] ?? item.purpose}
-                      {item.credit_card_name ? ' · ' + item.credit_card_name : ''}
-                      {item.status === 'fulfilled' ? ' · Fulfilled' : ''}
-                    </Text>
-                  </View>
-                  <AmountText value={formatCurrency(item.amount)} variant="titleSmall" tone={item.status === 'fulfilled' ? 'muted' : 'default'} />
-                  {item.status === 'reserved' && (
-                    <View style={styles.reservationActions}>
-                      <IconButton icon="pencil-outline" size={18} onPress={() => openEditReservationDialog(item)} />
-                      <IconButton icon="close" size={18} onPress={() => handleDeleteReservation(item.id)} />
+            <>
+              {reservationGroups.map((group) => (
+                <View key={group.label} style={styles.dayGroup}>
+                  <Text variant="labelLarge" style={[styles.dayLabel, { color: theme.colors.onSurfaceVariant }]}>
+                    {group.label}
+                  </Text>
+                  {group.items.map((item, index) => (
+                    <View key={item.id}>
+                      <View style={styles.listRow}>
+                        <View style={styles.listRowText}>
+                          <Text variant="bodyLarge" numberOfLines={1} style={{ color: theme.colors.onSurface }}>
+                            {item.name}
+                          </Text>
+                          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }} numberOfLines={1}>
+                            {item.category || PURPOSE_LABELS[item.purpose] || item.purpose}
+                            {item.credit_card_name ? ' · ' + item.credit_card_name : ''}
+                          </Text>
+                        </View>
+                        <AmountText value={formatCurrency(item.amount)} variant="titleSmall" />
+                        <View style={styles.reservationActions}>
+                          <IconButton icon="check-circle-outline" size={18} onPress={() => handleReleaseReservation(item.id)} />
+                          <IconButton icon="pencil-outline" size={18} onPress={() => openEditReservationDialog(item)} />
+                          <IconButton icon="close" size={18} onPress={() => handleDeleteReservation(item.id)} />
+                        </View>
+                      </View>
+                      {index < group.items.length - 1 && <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />}
                     </View>
-                  )}
+                  ))}
                 </View>
-                {index < arr.length - 1 && <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />}
-              </View>
-            ))
+              ))}
+            </>
           )}
         </View>
 
         <View style={styles.section}>
           <SectionHeader title="Coming In" subtitle="Not in your pocket yet." />
-          {incoming.length === 0 ? (
-            <EmptyState icon="cash-clock" title="Nothing expected" description="Money you're expecting can be logged here." compact />
+          {pendingIncoming.length === 0 && owingPeople.length === 0 ? (
+            <EmptyState icon="cash-clock" title="Nothing expected" description="Money friends owe you shows up here, so you can record it when they pay." compact />
           ) : (
-            incoming.map((item, index) => (
-              <View key={item.id}>
-                <View style={styles.listRow}>
-                  <View style={styles.listRowText}>
-                    <Text variant="bodyLarge" style={{ color: theme.colors.onSurface }}>
-                      {item.description || 'Coming In'}
-                    </Text>
-                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                      {formatDate(item.created_at.slice(0, 10))}
-                    </Text>
+            <>
+              {pendingIncoming.map((item, index) => (
+                <View key={item.id}>
+                  <View style={styles.listRow}>
+                    <MaterialCommunityIcons name="cash-plus" size={18} color={theme.colors.onSurfaceVariant} />
+                    <View style={styles.listRowText}>
+                      <Text variant="bodyLarge" style={{ color: theme.colors.onSurface }}>
+                        {item.description || INCOMING_SOURCE_LABELS[item.source_type]}
+                      </Text>
+                      <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                        {formatDate(item.created_at.slice(0, 10))}
+                      </Text>
+                    </View>
+                    <AmountText value={formatCurrency(item.amount)} variant="titleSmall" tone="positive" />
+                    <View style={styles.reservationActions}>
+                      <IconButton icon="check-circle-outline" size={18} onPress={() => handleConfirmIncoming(item.id)} />
+                      <IconButton icon="close" size={18} onPress={() => handleDeleteIncoming(item.id)} />
+                    </View>
                   </View>
-                  <AmountText value={formatCurrency(item.amount)} variant="titleSmall" tone="positive" />
-                  <IconButton icon="close" size={18} onPress={() => handleDeleteIncoming(item.id)} />
+                  {(index < pendingIncoming.length - 1 || owingPeople.length > 0) && <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />}
                 </View>
-                {index < incoming.length - 1 && <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />}
-              </View>
-            ))
+              ))}
+              {owingPeople.map((person, index) => (
+                <View key={person.id}>
+                  <View style={styles.listRow}>
+                    <MaterialCommunityIcons name="hand-coin-outline" size={18} color={theme.colors.onSurfaceVariant} />
+                    <View style={styles.listRowText}>
+                      <Text variant="bodyLarge" style={{ color: theme.colors.onSurface }}>
+                        {person.name} owes you
+                      </Text>
+                      <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                        From Money Owed
+                      </Text>
+                    </View>
+                    <AmountText value={formatCurrency(person.owesMe)} variant="titleSmall" tone="positive" />
+                    <IconButton icon="check-circle-outline" size={18} onPress={() => openOwedPayDialog(person)} />
+                  </View>
+                  {index < owingPeople.length - 1 && <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />}
+                </View>
+              ))}
+            </>
           )}
         </View>
 
@@ -446,9 +621,9 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
                     </Text>
                   </View>
                   <AmountText
-                    value={`${item.direction === 'in' ? '+' : '-'}${formatCurrency(item.amount)}`}
+                    value={item.direction === 'none' ? formatCurrency(item.amount) : `${item.direction === 'in' ? '+' : '-'}${formatCurrency(item.amount)}`}
                     variant="titleSmall"
-                    tone={item.direction === 'in' ? 'positive' : 'default'}
+                    tone={item.direction === 'in' ? 'positive' : item.direction === 'none' ? 'muted' : 'default'}
                   />
                 </View>
                 {index < activity.length - 1 && <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />}
@@ -532,6 +707,30 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
               </>
             )}
 
+            <Text variant="labelLarge" style={styles.dialogLabel}>
+              Category (optional)
+            </Text>
+            <View style={styles.chipWrap}>
+              {RESERVATION_CATEGORIES.map((c) => (
+                <Chip key={c} selected={reserveCategory === c} onPress={() => setReserveCategory(c)} mode={reserveCategory === c ? 'flat' : 'outlined'} compact>
+                  {c}
+                </Chip>
+              ))}
+            </View>
+            <AppTextInput
+              label="Or type a custom category"
+              value={RESERVATION_CATEGORIES.includes(reserveCategory as (typeof RESERVATION_CATEGORIES)[number]) ? '' : reserveCategory}
+              onChangeText={setReserveCategory}
+              style={styles.dialogField}
+            />
+
+            <View style={styles.chipRow}>
+              <Chip selected={hasPlannedDate} onPress={() => setHasPlannedDate((v) => !v)} mode={hasPlannedDate ? 'flat' : 'outlined'}>
+                Planned date
+              </Chip>
+            </View>
+            {hasPlannedDate && <DateField value={reservePlannedDate} onChange={setReservePlannedDate} />}
+
             {reserveError && (
               <Text style={[styles.error, { color: theme.colors.error }]} variant="bodySmall">
                 {reserveError}
@@ -548,37 +747,101 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
           </Dialog.Actions>
         </Dialog>
 
-        <Dialog visible={isIncomingDialogVisible} onDismiss={() => setIncomingDialogVisible(false)}>
-          <Dialog.Title>Coming In</Dialog.Title>
+        <Dialog visible={isDepositDialogVisible} onDismiss={() => setDepositDialogVisible(false)}>
+          <Dialog.Title>Add Money</Dialog.Title>
+          <Dialog.Content>
+            <Text variant="bodySmall" style={[styles.mutedLabel, { color: theme.colors.onSurfaceVariant }]}>
+              Increases your actual balance right away - this isn't an expense.
+            </Text>
+            <AppTextInput
+              label="Amount"
+              value={depositAmount}
+              onChangeText={setDepositAmount}
+              keyboardType="decimal-pad"
+              inputAccessoryViewID={DONE_ACCESSORY_ID}
+              left={<AppTextInput.Affix text="₱" />}
+              style={[styles.dialogField, styles.amountFieldSpacing]}
+            />
+            <Text variant="labelLarge" style={styles.dialogLabel}>
+              Source
+            </Text>
+            <View style={styles.chipWrap}>
+              {INCOMING_SOURCE_TYPES.map((s) => (
+                <Chip key={s.value} selected={depositSourceType === s.value} onPress={() => setDepositSourceType(s.value)} mode={depositSourceType === s.value ? 'flat' : 'outlined'} compact>
+                  {s.label}
+                </Chip>
+              ))}
+            </View>
+            <AppTextInput
+              label="Description (optional)"
+              value={depositDescription}
+              onChangeText={setDepositDescription}
+              placeholder="Bonus"
+              style={styles.dialogField}
+            />
+            {depositError && (
+              <Text style={[styles.error, { color: theme.colors.error }]} variant="bodySmall">
+                {depositError}
+              </Text>
+            )}
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setDepositDialogVisible(false)} disabled={isSubmittingDeposit}>
+              Cancel
+            </Button>
+            <Button onPress={handleCreateDeposit} loading={isSubmittingDeposit} disabled={isSubmittingDeposit}>
+              Add
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        <Dialog visible={payingPerson !== null} onDismiss={() => setPayingPerson(null)}>
+          <Dialog.Title>{payingPerson?.name} Pays You</Dialog.Title>
           <Dialog.Content>
             <AppTextInput
               label="Amount"
-              value={incomingAmount}
-              onChangeText={setIncomingAmount}
+              value={owedPayAmount}
+              onChangeText={setOwedPayAmount}
               keyboardType="decimal-pad"
               inputAccessoryViewID={DONE_ACCESSORY_ID}
               left={<AppTextInput.Affix text="₱" />}
               style={styles.dialogField}
             />
-            <AppTextInput
-              label="Description (optional)"
-              value={incomingDescription}
-              onChangeText={setIncomingDescription}
-              placeholder="Salary"
-              style={styles.dialogField}
-            />
-            {incomingError && (
+            <Text variant="labelLarge" style={styles.dialogLabel}>
+              Received Via
+            </Text>
+            <Menu
+              visible={isOwedAccountMenuVisible}
+              onDismiss={() => setOwedAccountMenuVisible(false)}
+              anchor={
+                <Button mode="outlined" onPress={() => setOwedAccountMenuVisible(true)} icon="bank-outline">
+                  {owedPaySelectedAccount ? owedPaySelectedAccount.name : 'Select an account'}
+                </Button>
+              }
+            >
+              {accounts.concat(account).map((a) => (
+                <Menu.Item
+                  key={a.id}
+                  title={a.name}
+                  onPress={() => {
+                    setOwedPayAccountId(a.id);
+                    setOwedAccountMenuVisible(false);
+                  }}
+                />
+              ))}
+            </Menu>
+            {owedPayError && (
               <Text style={[styles.error, { color: theme.colors.error }]} variant="bodySmall">
-                {incomingError}
+                {owedPayError}
               </Text>
             )}
           </Dialog.Content>
           <Dialog.Actions>
-            <Button onPress={() => setIncomingDialogVisible(false)} disabled={isSubmittingIncoming}>
+            <Button onPress={() => setPayingPerson(null)} disabled={isSubmittingOwedPay}>
               Cancel
             </Button>
-            <Button onPress={handleCreateIncoming} loading={isSubmittingIncoming} disabled={isSubmittingIncoming}>
-              Save
+            <Button onPress={handleRecordOwedPayment} loading={isSubmittingOwedPay} disabled={isSubmittingOwedPay}>
+              Record
             </Button>
           </Dialog.Actions>
         </Dialog>
@@ -655,6 +918,10 @@ export default function BankAccountDetailScreen({ route, navigation }: Props) {
         </Dialog>
       </Portal>
       <DoneAccessory />
+
+      <Snackbar visible={!!flash} onDismiss={() => setFlash(null)} duration={2000}>
+        {flash}
+      </Snackbar>
     </>
   );
 }
@@ -708,6 +975,26 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: spacing.xs,
   },
+  responsibilityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    gap: spacing.xs,
+    marginTop: spacing.base,
+  },
+  responsibilityAmount: {
+    marginLeft: 'auto',
+  },
+  negativeNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    padding: spacing.base,
+    marginBottom: spacing.base,
+  },
+  negativeNoticeText: {
+    flex: 1,
+  },
   incomingSummary: {
     marginBottom: spacing.xl,
     padding: spacing.base,
@@ -724,6 +1011,13 @@ const styles = StyleSheet.create({
   },
   section: {
     marginBottom: spacing.xl,
+  },
+  dayGroup: {
+    marginTop: spacing.xs,
+  },
+  dayLabel: {
+    marginBottom: 2,
+    marginTop: spacing.sm,
   },
   listRow: {
     flexDirection: 'row',
@@ -752,8 +1046,15 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginBottom: spacing.base,
   },
+  chipRow: {
+    flexDirection: 'row',
+    marginBottom: spacing.base,
+  },
   purposeButton: {
     marginBottom: spacing.xs,
+  },
+  amountFieldSpacing: {
+    marginTop: spacing.sm,
   },
   error: {
     marginTop: spacing.xs,

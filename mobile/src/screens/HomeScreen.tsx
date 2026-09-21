@@ -42,6 +42,7 @@ const SECTION_LABELS: Record<HomeSectionKey, string> = {
   recentExpenses: 'Recent Expenses',
   upcomingDue: 'Upcoming Due Dates',
   reservedMoney: 'Set Aside',
+  othersOweMe: 'Others Owe Me',
   monthlySummary: 'Monthly Summary',
   spendingByCategory: 'Spending by Category',
 };
@@ -225,7 +226,7 @@ export default function HomeScreen({ navigation }: Props) {
         </View>
 
         <View style={styles.quickActionsRow}>
-          <QuickAction icon="plus" label="Expense" primary onPress={() => navigation.navigate('Expenses')} />
+          <QuickAction icon="plus" label="Expense" primary onPress={() => navigation.navigate('Expenses', { screen: 'ExpenseForm', params: undefined })} />
           <QuickAction icon="hand-coin-outline" label="Money Owed" onPress={() => navigation.navigate('Money Owed')} />
           <QuickAction icon="calendar-clock-outline" label="Saved Plans" onPress={() => navigation.navigate('SavedPlans')} />
           <QuickAction icon="rocket-launch-outline" label="Set Me Up" onPress={() => navigation.navigate('Onboarding')} />
@@ -373,6 +374,34 @@ export default function HomeScreen({ navigation }: Props) {
                           <AmountText value={formatCurrency(r.amount)} variant="titleSmall" tone="muted" />
                         </View>
                         {index < data.reservations.length - 1 && <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />}
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
+
+            {key === 'othersOweMe' && (
+              <>
+                <SectionHeader
+                  title="Others Owe You"
+                  subtitle={data.othersOweMe.people.length > 0 ? `${formatCurrency(data.othersOweMe.total)} owed to you` : 'Nobody owes you right now.'}
+                  actionLabel="Money Owed"
+                  onActionPress={() => navigation.navigate('Money Owed')}
+                />
+                {data.othersOweMe.people.length === 0 ? (
+                  <EmptyState icon="hand-coin-outline" title="Nobody owes you" description="Split an expense with someone to track what they owe." compact />
+                ) : (
+                  <View style={styles.listGroup}>
+                    {data.othersOweMe.people.map((p, index) => (
+                      <View key={p.id}>
+                        <View style={styles.accountRow}>
+                          <Text variant="bodyLarge" numberOfLines={1} style={[styles.accountRowText, { color: theme.colors.onSurface }]}>
+                            {p.name}
+                          </Text>
+                          <AmountText value={formatCurrency(p.amount)} variant="titleSmall" tone="positive" />
+                        </View>
+                        {index < data.othersOweMe.people.length - 1 && <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />}
                       </View>
                     ))}
                   </View>
